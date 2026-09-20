@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="Compositor.MainWindow"
+        x:Name="Root"
+        Title="Compositor for Windows (MVP)" Width="1200" Height="760">
+  <Grid ColumnDefinitions="280,*" RowDefinitions="40,*">
+    <!-- toolbar -->
+    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="6,4">
+      <Button x:Name="MoveBtn" Content="Move" Click="OnToolMove"/>
+      <Button x:Name="HandBtn" Content="Hand" Click="OnToolHand"/>
+      <Button x:Name="ZoomInBtn" Content="+" Click="OnZoomIn"/>
+      <Button x:Name="ZoomOutBtn" Content="-" Click="OnZoomOut"/>
+      <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Text="100%"/>
+    </StackPanel>
+    <!-- left: layers -->
+    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6" Margin="6,6,6,6">
+      <TextBlock Text="Layers (top first)" FontWeight="Bold"/>
+      <ListBox x:Name="LayerList" Height="360" SelectionChanged="OnLayerSelected"/>
+      <WrapPanel Orientation="Horizontal">
+        <Button Content="New" Click="OnNew"/>
+        <Button Content="Import" Click="OnImport"/>
+        <Button Content="Export PNG" Click="OnExport"/>
+        <Button Content="+Layer" Click="OnAddLayer"/>
+        <Button Content="-Layer" Click="OnDeleteLayer"/>
+        <Button Content="Up" Click="OnUp"/>
+        <Button Content="Down" Click="OnDown"/>
+        <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged"/>
+      </WrapPanel>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Text="Opacity" VerticalAlignment="Center"/>
+        <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="150" ValueChanged="OnOpacityChanged"/>
+        <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%"/>
+      </StackPanel>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <TextBlock Text="Scale %" VerticalAlignment="Center"/>
+        <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="150" ValueChanged="OnScaleChanged"/>
+      </StackPanel>
+    </StackPanel>
+    <!-- canvas -->
+    <Border Grid.Row="1" Grid.Column="1" Margin="6" Background="#3C3C40">
+      <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <Image x:Name="CanvasImage" Stretch="None"
+               PointerPressed="OnCanvasPointerPressed"
+               PointerMoved="OnCanvasPointerMoved"
+               PointerReleased="OnCanvasPointerReleased"/>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</Window>
