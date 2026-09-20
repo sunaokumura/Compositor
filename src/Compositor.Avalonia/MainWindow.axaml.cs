@@ -22,7 +22,22 @@ public partial class MainWindow : Window
     SKPoint dragLayerPos;
     WriteableBitmap renderedBitmap;   // direct-pixel canvas surface (disposed on replace)
 
-    readonly UndoStack undoStack = new();
+    UndoStack undoStack = new();
+    readonly Dictionary<Document, UndoStack> docStacks = new();
+    readonly List<Document> openDocs = new();
+    bool updatingTabs;
+
+    enum Tool { Move, Hand, Brush, Eraser, Marquee }
+    Tool currentTool = Tool.Move;
+    List<SKPoint> strokePoints;       // active brush stroke (layer-pixel space)
+    SKPoint marqueeStart;             // marquee anchor (document px)
+    bool marqueeActive;
+
+    static readonly (string Name, SKColor Color)[] BrushColors = new[]
+    {
+        ("Black", SKColors.Black), ("White", SKColors.White), ("Red", SKColors.Red),
+        ("Green", SKColors.Green), ("Blue", SKColors.Blue), ("Yellow", SKColors.Yellow),
+    };
 
     bool uiReady;
     bool updatingList;
@@ -57,10 +72,29 @@ public partial class MainWindow : Window
         foreach (var (name, _) in BlendModes) BlendBox.Items.Add(name);
         BlendBox.SelectedIndex = 0;
 
+        foreach (var (name, _) in BrushColors) BrushColorBox.Items.Add(name);
+        BrushColorBox.SelectedIndex = 0;
+
+        openDocs.Add(doc);
+        docStacks[doc] = undoStack;
+        updatingTabs = true;
+        try { DocTabs.Items.Add(new TabItem { Header = doc.Name }); DocTabs.SelectedIndex = 0; }
+        finally { updatingTabs = false; }
+
         OpacitySlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
         ScaleSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
+        RotateSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
+        BrightSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
+        ContrastSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
+        SaturSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
+        BlurSlider.AddHandler(PointerPressedEvent, (s, e) => { sliderArmed = false; }, RoutingStrategies.Tunnel);
         OpacitySlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         ScaleSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        RotateSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        BrightSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        ContrastSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        SaturSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        BlurSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         undoStack.Changed += UpdateUndoButtons;
 
         doc.Changed += RefreshAll;
@@ -89,12 +123,31 @@ public partial class MainWindow : Window
         RefreshLayerList();
         if (Selected is { } sel)
         {
-            OpacitySlider.Value = sel.Opacity * 100;
-            ScaleSlider.Value = sel.Scale * 100;
-            VisibleCheck.IsChecked = sel.Visible;
-            int idx = Array.FindIndex(BlendModes, b => b.Mode == sel.Blend);
+            // Programmatic sync must not push Undo entries: guard with updatingList
+            // (OnOpacityChanged etc. return early while this is set).
             updatingList = true;
-            try { BlendBox.SelectedIndex = idx < 0 ? 0 : idx; } finally { updatingList = false; }
+            try
+            {
+                OpacitySlider.Value = sel.Opacity * 100;
+                OpacityLabel.Text = $"{sel.Opacity * 100:F0}%";
+                ScaleSlider.Value = sel.Scale * 100;
+                VisibleCheck.IsChecked = sel.Visible;
+                LockCheck.IsChecked = sel.Locked;
+                RenameBox.Text = sel.Name;
+                RotateSlider.Value = sel.Rotation;
+                RotateLabel.Text = $"{sel.Rotation:F0}°";
+                BrightSlider.Value = sel.Brightness;
+                BrightLabel.Text = $"{sel.Brightness:F0}";
+                ContrastSlider.Value = sel.Contrast;
+                ContrastLabel.Text = $"{sel.Contrast:F0}";
+                SaturSlider.Value = sel.Saturation;
+                SaturLabel.Text = $"{sel.Saturation:F0}";
+                BlurSlider.Value = sel.Blur;
+                BlurLabel.Text = $"{sel.Blur:F1}";
+                int idx = Array.FindIndex(BlendModes, b => b.Mode == sel.Blend);
+                BlendBox.SelectedIndex = idx < 0 ? 0 : idx;
+            }
+            finally { updatingList = false; }
         }
         RenderCanvas();
         UpdateUndoButtons();
@@ -149,7 +202,29 @@ public partial class MainWindow : Window
                 fb.Address, fb.RowBytes);
             var canvas = surface.Canvas;
             DrawCheckerboard(canvas, w, h);
-            doc.Draw(canvas, zoom);
+            doc.Draw(canvas, zoom, new SKRect(0, 0, doc.Width, doc.Height));
+            if (doc.Selection is SKRect selRect)
+            {
+                using var selPaint = new SKPaint
+                {
+                    Color = SKColors.Black,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 6, 4 }, 0),
+                };
+                var r = new SKRect(selRect.Left * zoom, selRect.Top * zoom, selRect.Right * zoom, selRect.Bottom * zoom);
+                canvas.DrawRect(r, selPaint);
+                using var selPaintW = new SKPaint
+                {
+                    Color = SKColors.White,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1,
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new float[] { 6, 4 }, 6),
+                };
+                canvas.DrawRect(r, selPaintW);
+            }
             surface.Flush();
         }
         renderedBitmap?.Dispose();
@@ -160,21 +235,48 @@ public partial class MainWindow : Window
         if (sw.ElapsedMilliseconds > 100) Log($"RenderCanvas {w}x{h} took {sw.ElapsedMilliseconds}ms");
     }
 
+    static SKBitmap checkerTile;   // 32x32 pattern (2x2 cells of 16px), built once, tiled via shader
+    static SKBitmap CheckerTile()
+    {
+        if (checkerTile != null) return checkerTile;
+        var tile = new SKBitmap(32, 32, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(tile))
+        {
+            canvas.Clear(new SKColor(230, 230, 230));
+            using var dark = new SKPaint { Color = new SKColor(200, 200, 204) };
+            canvas.DrawRect(16, 0, 16, 16, dark);
+            canvas.DrawRect(0, 16, 16, 16, dark);
+        }
+        checkerTile = tile;
+        return tile;
+    }
+
     static void DrawCheckerboard(SKCanvas canvas, int w, int h)
     {
-        const int c = 16;
-        using var light = new SKPaint { Color = new SKColor(230, 230, 230) };
-        using var dark = new SKPaint { Color = new SKColor(200, 200, 204) };
-        for (int y = 0; y < h; y += c)
-            for (int x = 0; x < w; x += c)
-                canvas.DrawRect(x, y, Math.Min(c, w - x), Math.Min(c, h - y),
-                    ((x / c + y / c) % 2 == 0) ? light : dark);
+        // 旧来の16pxセル毎DrawRectは4Kで約3.2万回発行しフレームを支配していた。
+        // 32x32パターンをRepeatシェーダで一括充填する（1 draw call、メモリ+4KBのみ）。
+        using var paint = new SKPaint
+        {
+            Shader = SKShader.CreateBitmap(CheckerTile(), SKShaderTileMode.Repeat, SKShaderTileMode.Repeat),
+        };
+        canvas.DrawRect(0, 0, w, h, paint);
     }
 
     // ---------- tools / zoom ----------
 
-    void OnToolMove(object s, RoutedEventArgs e) { }
-    void OnToolHand(object s, RoutedEventArgs e) { }
+    void SetTool(Tool t)
+    {
+        currentTool = t;
+        marqueeActive = false;
+        strokePoints = null;
+        Log($"Tool={t}");
+    }
+
+    void OnToolMove(object s, RoutedEventArgs e) => SetTool(Tool.Move);
+    void OnToolHand(object s, RoutedEventArgs e) => SetTool(Tool.Hand);
+    void OnToolBrush(object s, RoutedEventArgs e) => SetTool(Tool.Brush);
+    void OnToolEraser(object s, RoutedEventArgs e) => SetTool(Tool.Eraser);
+    void OnToolMarquee(object s, RoutedEventArgs e) => SetTool(Tool.Marquee);
     void OnZoomIn(object s, RoutedEventArgs e) { zoom = Math.Min(4f, zoom * 1.5f); RenderCanvas(); }
     void OnZoomOut(object s, RoutedEventArgs e) { zoom = Math.Max(0.1f, zoom / 1.5f); RenderCanvas(); }
 
@@ -183,7 +285,17 @@ public partial class MainWindow : Window
     void OnNew(object s, RoutedEventArgs e)
     {
         undoStack.Push(doc);
-        doc = new Document { Width = 800, Height = 600 };
+        var fresh = new Document { Width = 800, Height = 600 };
+        int idx = openDocs.IndexOf(doc);
+        if (idx >= 0)
+        {
+            docStacks.Remove(doc);
+            openDocs[idx] = fresh;
+            docStacks[fresh] = undoStack;
+            updatingTabs = true;
+            try { ((TabItem)DocTabs.Items[idx]).Header = fresh.Name; } finally { updatingTabs = false; }
+        }
+        doc = fresh;
         doc.Changed += RefreshAll;
         RefreshAll();
     }
@@ -240,6 +352,101 @@ public partial class MainWindow : Window
         RefreshAll();
     }
 
+    void OnLockChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || updatingList) return;
+        bool locked = LockCheck.IsChecked == true;
+        if (l.Locked == locked) return;
+        undoStack.Push(doc);
+        l.Locked = locked;
+        RefreshLayerList();
+    }
+
+    void OnRename(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        var name = (RenameBox.Text ?? "").Trim();
+        if (name.Length == 0 || name == l.Name) return;
+        undoStack.Push(doc);
+        l.Name = name;
+        RefreshLayerList();
+    }
+
+    void OnDuplicateLayer(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || l.Bitmap == null) return;
+        undoStack.Push(doc);
+        var copy = new SKBitmap(l.Bitmap.Width, l.Bitmap.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(copy))
+            canvas.DrawBitmap(l.Bitmap, 0, 0);
+        int i = doc.Layers.IndexOf(l);
+        doc.Layers.Insert(i + 1, new Layer
+        {
+            Name = l.Name + " copy", Bitmap = copy, Visible = l.Visible, Opacity = l.Opacity,
+            Position = new SKPoint(l.Position.X + 10, l.Position.Y + 10), Scale = l.Scale,
+            Blend = l.Blend, Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
+            Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
+            Blur = l.Blur, Invert = l.Invert,
+        });
+        Log($"Duplicate '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMergeDown(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } top) return;
+        int i = doc.Layers.IndexOf(top);
+        if (i <= 0) return;   // bottom-up: index 0 is bottom, needs a layer below
+        var below = doc.Layers[i - 1];
+        if (below.Bitmap == null || top.Bitmap == null) return;
+        undoStack.Push(doc);
+        Document.EnsureUniqueBitmap(below);
+        using (var canvas = new SKCanvas(below.Bitmap))
+            Document.DrawLayer(canvas, new Layer
+            {
+                Bitmap = top.Bitmap, Visible = true, Opacity = top.Opacity,
+                Position = new SKPoint(top.Position.X - below.Position.X, top.Position.Y - below.Position.Y),
+                Scale = top.Scale, Blend = top.Blend, Rotation = top.Rotation,
+                FlipH = top.FlipH, FlipV = top.FlipV, Brightness = top.Brightness,
+                Contrast = top.Contrast, Saturation = top.Saturation, Blur = top.Blur, Invert = top.Invert,
+            }, 1f);
+        doc.Layers.Remove(top);
+        Log($"MergeDown '{top.Name}' into '{below.Name}'");
+        RefreshAll();
+    }
+
+    // ---------- document tabs ----------
+
+    void OnNewDocTab(object s, RoutedEventArgs e)
+    {
+        var d = new Document { Width = 800, Height = 600, Name = $"Untitled {openDocs.Count + 1}" };
+        d.Changed += RefreshAll;
+        openDocs.Add(d);
+        var st = new UndoStack();
+        st.Changed += UpdateUndoButtons;
+        docStacks[d] = st;
+        updatingTabs = true;
+        try
+        {
+            DocTabs.Items.Add(new TabItem { Header = d.Name });
+            DocTabs.SelectedIndex = DocTabs.Items.Count - 1;
+        }
+        finally { updatingTabs = false; }
+        doc = d;
+        undoStack = st;
+        Log($"NewDocTab '{d.Name}'");
+        RefreshAll();
+    }
+
+    void OnDocTabChanged(object s, SelectionChangedEventArgs e)
+    {
+        if (updatingTabs || DocTabs.SelectedIndex < 0 || DocTabs.SelectedIndex >= openDocs.Count) return;
+        doc = openDocs[DocTabs.SelectedIndex];
+        undoStack = docStacks[doc];
+        Log($"DocTab -> '{doc.Name}'");
+        RefreshAll();
+    }
+
     void OnUp(object s, RoutedEventArgs e)   // move toward top of stack
     {
         int li = LayerList.SelectedIndex;
@@ -274,7 +481,7 @@ public partial class MainWindow : Window
 
     void OnOpacityChanged(object s, RoutedEventArgs e)
     {
-        if (Selected is not { } l || !uiReady) return;
+        if (Selected is not { } l || !uiReady || updatingList) return;
         if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
         l.Opacity = (float)(OpacitySlider.Value / 100);
         OpacityLabel.Text = $"{OpacitySlider.Value:F0}%";
@@ -284,7 +491,7 @@ public partial class MainWindow : Window
 
     void OnScaleChanged(object s, RoutedEventArgs e)
     {
-        if (Selected is not { } l || !uiReady) return;
+        if (Selected is not { } l || !uiReady || updatingList) return;
         if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
         l.Scale = (float)(ScaleSlider.Value / 100);
         RefreshLayerList();
@@ -309,6 +516,91 @@ public partial class MainWindow : Window
         l.Blend = BlendModes[Math.Max(0, BlendBox.SelectedIndex)].Mode;
         RefreshLayerList();
         RenderCanvas();
+    }
+
+    // ---------- transform (Mac LayerTransform subset) ----------
+
+    void OnRotateChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !uiReady || updatingList) return;
+        if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
+        l.Rotation = (float)RotateSlider.Value;
+        RotateLabel.Text = $"{l.Rotation:F0}°";
+        RenderCanvas();
+    }
+
+    void OnRotate90(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        undoStack.Push(doc);
+        l.Rotation = (l.Rotation + 90) % 360;
+        Log($"Rotate90 -> {l.Rotation}°");
+        RefreshAll();
+    }
+
+    void OnFlipH(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        undoStack.Push(doc);
+        l.FlipH = !l.FlipH;
+        Log($"FlipH={l.FlipH}");
+        RefreshAll();
+    }
+
+    void OnFlipV(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        undoStack.Push(doc);
+        l.FlipV = !l.FlipV;
+        Log($"FlipV={l.FlipV}");
+        RefreshAll();
+    }
+
+    // ---------- adjustments (Mac ImageAdjustments subset, non-destructive) ----------
+
+    void OnBrightChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !uiReady || updatingList) return;
+        if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
+        l.Brightness = (float)BrightSlider.Value;
+        BrightLabel.Text = $"{l.Brightness:F0}";
+        RenderCanvas();
+    }
+
+    void OnContrastChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !uiReady || updatingList) return;
+        if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
+        l.Contrast = (float)ContrastSlider.Value;
+        ContrastLabel.Text = $"{l.Contrast:F0}";
+        RenderCanvas();
+    }
+
+    void OnSaturChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !uiReady || updatingList) return;
+        if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
+        l.Saturation = (float)SaturSlider.Value;
+        SaturLabel.Text = $"{l.Saturation:F0}";
+        RenderCanvas();
+    }
+
+    void OnBlurChanged(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !uiReady || updatingList) return;
+        if (!sliderArmed) { undoStack.Push(doc); sliderArmed = true; }
+        l.Blur = (float)BlurSlider.Value;
+        BlurLabel.Text = $"{l.Blur:F1}";
+        RenderCanvas();
+    }
+
+    void OnInvert(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        undoStack.Push(doc);
+        l.Invert = !l.Invert;   // non-destructive flag (destructive path: Document.ApplyInvert)
+        Log($"Invert={l.Invert}");
+        RefreshAll();
     }
 
     // ---------- undo / redo ----------
@@ -410,8 +702,37 @@ public partial class MainWindow : Window
         Log($"OnKeyDown {mods} {k}");
         switch (k)
         {
-            case Key.V when mods == KeyModifiers.None: OnToolMove(null, null); e.Handled = true; break;
-            case Key.H when mods == KeyModifiers.None: OnToolHand(null, null); e.Handled = true; break;
+            case Key.B when mods == KeyModifiers.None: SetTool(Tool.Brush); e.Handled = true; break;
+            case Key.E when mods == KeyModifiers.None: SetTool(Tool.Eraser); e.Handled = true; break;
+            case Key.M when mods == KeyModifiers.None: SetTool(Tool.Marquee); e.Handled = true; break;
+            case Key.V when mods == KeyModifiers.None: SetTool(Tool.Move); e.Handled = true; break;
+            case Key.H when mods == KeyModifiers.None: SetTool(Tool.Hand); e.Handled = true; break;
+            case Key.OemOpenBrackets when mods == KeyModifiers.None:
+                BrushSizeSlider.Value = Math.Max(BrushSizeSlider.Minimum, BrushSizeSlider.Value - 4);
+                e.Handled = true; break;
+            case Key.OemCloseBrackets when mods == KeyModifiers.None:
+                BrushSizeSlider.Value = Math.Min(BrushSizeSlider.Maximum, BrushSizeSlider.Value + 4);
+                e.Handled = true; break;
+            case Key.D when mods.HasFlag(KeyModifiers.Control):
+                doc.Selection = null; RenderCanvas(); Log("Deselect"); e.Handled = true; break;
+            case Key.Left when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
+            case Key.Right when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
+            case Key.Up when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
+            case Key.Down when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
+                if (Selected is { } nudge && !nudge.Locked)
+                {
+                    float d = mods.HasFlag(KeyModifiers.Shift) ? 10 : 1;
+                    undoStack.Push(doc);
+                    var p = nudge.Position;
+                    if (k == Key.Left) p.X -= d;
+                    if (k == Key.Right) p.X += d;
+                    if (k == Key.Up) p.Y -= d;
+                    if (k == Key.Down) p.Y += d;
+                    nudge.Position = p;
+                    RenderCanvas();
+                    RefreshLayerList();
+                }
+                e.Handled = true; break;
             case Key.Delete: OnDeleteLayer(null, null); e.Handled = true; break;
             case Key.Z when mods.HasFlag(KeyModifiers.Control) && mods.HasFlag(KeyModifiers.Shift):
             case Key.Y when mods.HasFlag(KeyModifiers.Control):
@@ -432,19 +753,62 @@ public partial class MainWindow : Window
         base.OnKeyDown(e);
     }
 
-    // ---------- canvas interaction (Move tool) ----------
+    // ---------- canvas interaction (Move / Brush / Eraser / Marquee) ----------
+
+    SKColor BrushPaintColor()
+    {
+        int i = BrushColorBox?.SelectedIndex ?? 0;
+        if (i >= 0 && i < BrushColors.Length) return BrushColors[i].Color;
+        return SKColors.Black;
+    }
+
+    SKPoint ToLayerPixel(Layer l, SKPoint docPoint) =>
+        new((docPoint.X - l.Position.X) / Math.Max(1e-6f, l.Scale),
+            (docPoint.Y - l.Position.Y) / Math.Max(1e-6f, l.Scale));
+
+    bool InsideSelection(SKPoint docPoint) =>
+        doc.Selection is not SKRect r || (docPoint.X >= r.Left && docPoint.X <= r.Right && docPoint.Y >= r.Top && docPoint.Y <= r.Bottom);
 
     void OnCanvasPointerPressed(object s, PointerPressedEventArgs e)
     {
-        Log("OnCanvasPointerPressed");
+        Log($"OnCanvasPointerPressed tool={currentTool}");
 
         var props = e.GetCurrentPoint((Control)s).Properties;
         if (!props.IsLeftButtonPressed) return;
-        var p = CanvasPoint(e, (Control)s);
+        var docPoint = CanvasPoint(e, (Control)s);
+        if (currentTool == Tool.Marquee)
+        {
+            marqueeStart = docPoint;
+            marqueeActive = true;
+            doc.Selection = new SKRect(docPoint.X, docPoint.Y, docPoint.X, docPoint.Y);
+            RenderCanvas();
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Brush || currentTool == Tool.Eraser)
+        {
+            for (int i = doc.Layers.Count - 1; i >= 0; i--)
+            {
+                var l = doc.Layers[i];
+                if (!l.Visible || l.Locked || l.Bitmap == null) continue;
+                if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
+                undoStack.Push(doc);   // stroke単位で1エントリ（Moved中は追加pushしない）
+                strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
+                dragLayer = l;
+                Document.PaintStroke(l, strokePoints, BrushPaintColor(),
+                    (float)(BrushSizeSlider?.Value ?? 24), currentTool == Tool.Eraser);
+                RenderCanvas();
+                RefreshLayerList();
+                break;
+            }
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        // Move / Hand: topmost hit layer drag (Handはスクロール任せのためMoveと同等)
         for (int i = doc.Layers.Count - 1; i >= 0; i--)
         {
             var l = doc.Layers[i];
-            if (l.Visible && !l.Locked && l.HitTest(p))
+            if (l.Visible && !l.Locked && l.HitTest(docPoint))
             {
                 undoStack.Push(doc);   // ドラッグ前の状態を保存（Released時pushではUndoが効かない）
                 dragLayer = l;
@@ -465,11 +829,47 @@ public partial class MainWindow : Window
 
     void OnCanvasPointerMoved(object s, PointerEventArgs e)
     {
+        if (marqueeActive)
+        {
+            // 選択はUndo履歴に載せない（Photoshop同様、選択自体は履歴対象外）
+            var docPoint = CanvasPoint(e, (Control)s);
+            doc.Selection = new SKRect(
+                Math.Min(marqueeStart.X, docPoint.X), Math.Min(marqueeStart.Y, docPoint.Y),
+                Math.Max(marqueeStart.X, docPoint.X), Math.Max(marqueeStart.Y, docPoint.Y));
+            RenderCanvas();
+            return;
+        }
+        if (strokePoints != null && dragLayer != null && dragLayer.Bitmap != null)
+        {
+            var props = e.GetCurrentPoint((Control)s).Properties;
+            if (!props.IsLeftButtonPressed) { strokePoints = null; dragLayer = null; return; }
+            var docPoint = CanvasPoint(e, (Control)s);
+            if (!InsideSelection(docPoint)) return;
+            var lp = ToLayerPixel(dragLayer, docPoint);
+            strokePoints.Add(lp);
+            // 直近セグメントのみ描画（COW済みのため追加push不要）
+            using (var canvas = new SKCanvas(dragLayer.Bitmap))
+            using (var paint = new SKPaint
+            {
+                Color = currentTool == Tool.Eraser ? SKColors.Transparent : BrushPaintColor(),
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = (float)(BrushSizeSlider?.Value ?? 24),
+                StrokeCap = SKStrokeCap.Round,
+                StrokeJoin = SKStrokeJoin.Round,
+                IsAntialias = true,
+                BlendMode = currentTool == Tool.Eraser ? SKBlendMode.Clear : SKBlendMode.SrcOver,
+            })
+            {
+                canvas.DrawLine(strokePoints[^2], strokePoints[^1], paint);
+            }
+            RenderCanvas();
+            return;
+        }
         if (dragLayer == null) return;
         Log("OnCanvasPointerMoved dragging");
 
-        var props = e.GetCurrentPoint((Control)s).Properties;
-        if (!props.IsLeftButtonPressed) { dragLayer = null; return; }
+        var props2 = e.GetCurrentPoint((Control)s).Properties;
+        if (!props2.IsLeftButtonPressed) { dragLayer = null; return; }
         var now = e.GetPosition((Visual)s);
         dragLayer.Position = new SKPoint(
             dragLayerPos.X + (float)((now.X - dragStart.X) / zoom),
@@ -481,6 +881,16 @@ public partial class MainWindow : Window
     void OnCanvasPointerReleased(object s, Avalonia.Input.PointerReleasedEventArgs e)
     {
         // UndoはPressed時にpush済み。ここではドラッグ状態の解除のみ。
+        if (marqueeActive)
+        {
+            marqueeActive = false;
+            // 極小選択はクリック扱いで解除
+            if (doc.Selection is SKRect r && (r.Width < 3 || r.Height < 3))
+                doc.Selection = null;
+            Log($"Marquee selection={doc.Selection}");
+            RenderCanvas();
+        }
+        strokePoints = null;
         dragLayer = null;
         e.Pointer.Capture(null);
     }
