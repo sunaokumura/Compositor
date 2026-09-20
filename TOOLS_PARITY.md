@@ -1,4 +1,4 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_78505b8d時点）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_47f638b1時点）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
@@ -35,19 +35,19 @@
 ## 調整系
 | Mac | Windows | 状態 |
 |---|---|---|
-| ImageAdjustments.swift（露出/カラー調整基盤） | Document.BuildAdjustmentFilter（Brightness/Contrast/Saturation/Invert結合行列・非破壊） | △ |
-| HueSaturation.swift | Saturationスライダー（0=グレー〜200） | △（色相指定なし） |
-| Levels.swift / LevelsAutomatic.swift | — | ×（Levels (未対応)バッジ） |
-| Curves.swift | — | ×（Curves (未対応)バッジ） |
-| Gradient.swift（GradientMap含む） | — | ×（GradientMap (未対応)バッジ） |
+| ImageAdjustments.swift（露出/カラー調整基盤） | Document.BuildAdjustmentFilter（Brightness/Contrast/Saturation/Invert結合行列・非破壊）＋Exposure/GradientMap/Grainエンジン（Adjustments.cs・画素値試験済み） | △（露出スライダー等のシートUIなし） |
+| HueSaturation.swift | HueOps全域エンジン（Master＋6色域・Hue/Sat/Light・band weight/center/include/exclude・eyedropper相当SampledHue・colorize・破壊/調整層適用）＋Saturationスライダー（UI既存） | △（Hue/SaturationシートUIなし・ボタンは将来のダイアログ用に未対応表示を維持） |
+| Levels.swift / LevelsAutomatic.swift | LevelsOpsエンジン（LevelRange正規化・RGB合成順・LUT補間・alpha非premult処理・histogram・DisplayScale・Auto Contrast/Color/Neutral・black/gray/white sampling）＋破壊/調整層適用（8試験） | △（LevelsシートUIなし・ボタンは将来のダイアログ用に未対応表示を維持） |
+| Curves.swift | CurvesSettingsエンジン（Hermite形状保持補間・isValid・per-channel→master順LUT）＋破壊/調整層適用（4試験） | △（CurvesシートUIなし・ボタンは将来のダイアログ用に未対応表示を維持） |
+| Gradient.swift（GradientMap含む） | GradientMapエンジン（2126/7152/722輝度・反転・破壊/調整層適用・3試験） | △（GradientMapシートUIなし・ボタンは将来のダイアログ用に未対応表示を維持） |
 | PixelAdjust.swift | Brightness/Contrastスライダー | △ |
 | PixelInvert.swift | Invertフラグ（非破壊・UI）＋ApplyInvert（破壊・API） | ○ |
-| AdjustmentEditing.swift / LayerAdjustment.swift（調整レイヤー） | レイヤー単位パラメータ（調整レイヤー方式ではない） | △ |
+| AdjustmentEditing.swift / LayerAdjustment.swift（調整レイヤー） | Layer.IsAdjustmentLayer＋LayerAdjustment（Hsv/Levels/Curves/Exposure/GradientMap/Grain・下層合成へ非破壊適用・Undo対応・5試験）。層単位Bright/Contrast等は互換維持だが新規調整では非推奨（Adjustments.cs移行注記） | △（編集セッションbegin/finish・シート連動なし） |
 
 ## フィルタ系
 | Mac | Windows | 状態 |
 |---|---|---|
-| Filters.swift（ぼかし/ノイズ/レンズ等） | Blur（ガウス・非破壊）のみ | △ |
+| Filters.swift（ぼかし/ノイズ/レンズ等） | Blur（ガウス・非破壊）に加えエンジン移植：Grain（ドキュメント空間seed固定・3試験相当）・Noise（Uniform/Gaussian・Mono・seed固定・2試験）・Lens補正（k=distortion/100*0.35・bilinear・1試験）・Gaussian/Motion Blur層縁外広がり（margin=radius*3+2 / distance/2+2・位置補正・trim・3試験） | △（FilterシートUIなし・Motionは方向性マルチタップ近似と文書化） |
 | ContentFill.swift | — | ×（ContentFill (未対応)バッジ） |
 | GuidedMatte.swift（マット精緻化） | — | ×（SubjectRemoval関連のため対象外） |
 | SubjectRemoval.swift（Vision被写体除去） | — | ×（Subject Removal (未対応)バッジ・Vision相当なし） |
@@ -65,5 +65,5 @@
 
 ## 集計
 - ○ 12件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / LayerTransform（数値入力・Sampling含む） / Distort / CanvasSize / Crop / ImageSize（＋部分含め実用中核）
-- △ 15件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作
-- × 14件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（ContentFill/SubjectRemoval/Curves/Levels/GradientMap等。CloneStamp/Heal/Smudge/Lasso/MagicWand/Distort/Crop/CanvasSizeは対応済みのためバッジ解除）
+- △ 18件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作（＋本カードでCurves/Levels/GradientMap/Exposure/Grain/Noise/Lens/Blur外広がり/調整層のエンジンを追加・シートUIは次段階）
+- × 11件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（ContentFill/SubjectRemoval/調整シートUI等。Curves/Levels/GradientMapの無効ボタンはシートUI用に残置・エンジンは△欄参照。CloneStamp/Heal/Smudge/Lasso/MagicWand/Distort/Crop/CanvasSizeは対応済みのためバッジ解除）

@@ -23,11 +23,20 @@ public class Layer
     public bool FlipH;
     public bool FlipV;
     // --- adjustments (non-destructive, Mac ImageAdjustments subset) ---
+    // LEGACY (deprecated for new adjustments): per-layer Brightness/Contrast/
+    // Saturation/Blur/Invert. Kept for compatibility; new adjustments should use
+    // adjustment layers (IsAdjustmentLayer + Adjustment, Mac LayerAdjustment
+    // subset) — see Adjustments.cs migration note.
     public float Brightness;         // -100..100 (0 = off)
     public float Contrast;           // -100..100 (0 = off)
     public float Saturation = 100f;  // 0 = gray, 100 = identity, up to 200 boost
     public float Blur;               // Gaussian radius in layer px, 0 = off
     public bool Invert;              // PixelInvert equivalent
+    // --- adjustment layer (Mac LayerAdjustment/AdjustmentEditing subset, preferred) ---
+    // When true, Bitmap is ignored and Adjustment applies to the composite of the
+    // layers below at draw/compose time (non-destructive, Undo-safe metadata).
+    public bool IsAdjustmentLayer;
+    public LayerAdjustment Adjustment;
 
     public SKRect Bounds => SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
     public bool HitTest(SKPoint p) => Bounds.Contains(p.X, p.Y);
@@ -48,6 +57,7 @@ public class LayerSnapshot
         public LayerSampling Sampling;
         public float Rotation; public bool FlipH, FlipV;
         public float Brightness, Contrast, Saturation, Blur; public bool Invert;
+        public bool IsAdjustmentLayer; public LayerAdjustment Adjustment;
     }
     public List<Item> Items = new();
     public int Width, Height;
@@ -62,7 +72,8 @@ public class LayerSnapshot
                 Sampling = l.Sampling,
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
                 Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
-                Blur = l.Blur, Invert = l.Invert });
+                Blur = l.Blur, Invert = l.Invert,
+                IsAdjustmentLayer = l.IsAdjustmentLayer, Adjustment = l.Adjustment?.Clone() });
         return s;
     }
 
@@ -79,6 +90,7 @@ public class LayerSnapshot
             it.Layer.Rotation = it.Rotation; it.Layer.FlipH = it.FlipH; it.Layer.FlipV = it.FlipV;
             it.Layer.Brightness = it.Brightness; it.Layer.Contrast = it.Contrast;
             it.Layer.Saturation = it.Saturation; it.Layer.Blur = it.Blur; it.Layer.Invert = it.Invert;
+            it.Layer.IsAdjustmentLayer = it.IsAdjustmentLayer; it.Layer.Adjustment = it.Adjustment?.Clone();
             doc.Layers.Add(it.Layer);
         }
     }
@@ -144,17 +156,48 @@ public class Document
     public event Action Changed;
     public void RaiseChanged() => Changed?.Invoke();
 
-    /// <summary>Composite all visible layers bottom-up into a flat bitmap of doc size.</summary>
+    /// <summary>Composite all visible layers bottom-up into a flat bitmap of doc size.
+    /// Adjustment layers apply to the composite of the layers below (Mac LayerAdjustment).</summary>
     public SKBitmap Compose()
     {
+        if (Layers.Any(l => l is { Visible: true, IsAdjustmentLayer: true, Adjustment: not null }))
+            return ComposeWithAdjustments();
         var bmp = new SKBitmap(Width, Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bmp);
         Draw(canvas, 1f);
         return bmp;
     }
 
+    public bool HasAdjustmentLayers =>
+        Layers.Any(l => l is { Visible: true, IsAdjustmentLayer: true, Adjustment: not null });
+
+    /// <summary>CPU composite honoring adjustment layers (non-destructive, Undo-safe).</summary>
+    public SKBitmap ComposeWithAdjustments()
+    {
+        var acc = new SKBitmap(Math.Max(1, Width), Math.Max(1, Height), SKColorType.Bgra8888, SKAlphaType.Premul);
+        acc.Erase(SKColor.Empty);
+        using var canvas = new SKCanvas(acc);
+        foreach (var layer in Layers)
+        {
+            if (!layer.Visible) continue;
+            if (layer is { IsAdjustmentLayer: true, Adjustment: not null })
+                layer.Adjustment.ApplyToComposite(acc);
+            else
+                DrawLayer(canvas, layer, 1f);
+        }
+        return acc;
+    }
+
     public void Draw(SKCanvas canvas, float zoom, SKRect? viewportDocRect = null)
     {
+        if (HasAdjustmentLayers)
+        {
+            // Adjustment layers need readback of the composite below: render at doc
+            // resolution first, then blit scaled (preview path; Compose stays exact).
+            using var acc = ComposeWithAdjustments();
+            canvas.DrawBitmap(acc, new SKRect(0, 0, Width * zoom, Height * zoom));
+            return;
+        }
         foreach (var layer in Layers)
         {
             if (viewportDocRect is SKRect vp && IsOutsideViewport(layer, vp))
