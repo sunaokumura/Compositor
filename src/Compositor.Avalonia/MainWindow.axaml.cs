@@ -525,7 +525,8 @@ public partial class MainWindow : Window
 
     void HighlightRail()
     {
-        var on = (Avalonia.Media.IBrush)Avalonia.Media.Brushes.DimGray;
+        // 意匠 t_fec99135: 題材統一 (#094771 選択 / Transparent 非選択)。x:Name・操作子は不変。
+        var on = (Avalonia.Media.IBrush)new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromRgb(9, 71, 113));
         var off = (Avalonia.Media.IBrush)Avalonia.Media.Brushes.Transparent;
         if (MoveBtn != null) MoveBtn.Background = currentTool == Tool.Move ? on : off;
         if (HandBtn != null) HandBtn.Background = currentTool == Tool.Hand ? on : off;

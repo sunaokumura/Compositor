@@ -86,3 +86,15 @@ Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42
 - ×相当バッジ計7： 表内×3に加え、調整・フィルタ系シートUI未対応ボタン4（Curves/Levels/Hue/Filterのダイアログ。エンジンは△欄に移植済みのため表判定は△、ボタンは将来のシートUI用に未対応表示を残置）。Shape/Gradient/ContentFill/Mask/Group/Clipは対応済みのためバッジ解除・Fボタン有効化
 - 入出力・文書UI系（別枠・42件外）： 8行すべて△（.comp保存開封v1-7読込/v7書出・Save/SaveAs/Open・PNG/JPEG出力・Import・NewCanvas・JPEG/Colorピッカー・タブ）。HEIC/TIFFは復号器なしのため探知＋「未対応形式」明示
 - 検証証跡（t_569f69c1）： dotnet test Release 158/158合格（内Perf 2件含む）。Perf回帰＝4K三層合成84ms（基準94ms台を下回る）・1000回合成ストレス 949ms・メモリ+7KB（漏洩目安50MB未満を大幅クリア）。win-x64自己完結発行（0 errors・CS0618ダイアログ警告のみ）＋Make-Release.ps1で配布zip更新（216 entries・SHA256はdist内.sha256参照）。C:\Users\sunao\Apps\Compositor への上書き反映は利用者許可待ちのため未実施（既配置版は21:42版のまま）。追補： 実機煙試験で起動直後のSyncPalette ERROR（Index範囲外）を検出→原因工程t_e1a8b05eのDocumentsUI.SyncPalettePanel再入ガード欠落と特定し修正（updatingPaletteガード＋SafeSelect化＋例外全文ログ化）。修正後は全158試験再合格・修正版で実機再起動し無エラー起動を確認（Compositor for Windows・Responding=True・compositor.logにERRORなし）。修正版でpublish-winと配布zipを再生成（SHA256はdist内.sha256参照）
+
+## 意匠作替（t_fec99135・2026-09-20・機能 parity 不変）
+- 目的： 素人感の脱却。画像中心の専門製品意匠へ作替え（Photoshop超えの操作感が目標）。機能追加・削除なし。
+- 文字鍵の画像化： 工具列18鍵を Avalonia PathIcon の自作画像へ作替（Move/Hand/Brush/Eraser/Marquee/Lasso/Wand/Clone/Heal/Smudge/Eyedropper/Crop/Distort/Shape/Gradient/ContentFill/SR禁止印）。絵文字の使用なし。道具欄・層板の操作子は画像＋短文の hybrid（意味保持のため短文を残置）。状態表示鍵3件（ShapeKindBtn・MarqueeShapeBtn・LassoKindBtn）は実行時に Content 文字列を切替える仕様のため原文維持（意匠例外として記録）。
+- 暗色題材の統一仕様： 背景 #1E1E1E / 板 #252526 / 頭欄 #2D2D30 / 区切線 #3E3E42 / 本文 #E8E8E8 / 副文 #9D9D9D / 補助 #6E6E6E / 選択 #094771＋#007ACC / 無効 Opacity 0.45。Fluent Dark 基調。Foreground="Gray" の未統一残存なし。Window.Styles に rail/bar/chip/section/dim/ListBoxItem/Slider を集約。選択強調は HighlightRail の DimGray から #094771 に変更（.cs 2行のみ・操作子名不変）。
+- 層板の製品化： 見出し＋画像化（Layers・目玉相当 Visible・錠相当 Lock は助言に明示）、層列は暗地＋枠＋角丸＋行余白の統一意匠、行内容（[F]/[M]/[M*]/[C]/[S]/不透明度/座標）は data のため原文維持。Up/Down・Duplicate・Merge・Mask・Group/Clip・Canvas・Crop確定/取消・Deselect/Delete Sel を画像＋短文へ。
+- 工具頭欄の製品化： 先頭に題印画像＋題（動的）＋区切線＋助言（動的）の整列。滑子幅 112 統一・数値欄は本文色 #E8E8E8、見出しは section 様式に統一。
+- 画布域の製品化： 外余白12＋#252526板＋#3E3E42枠＋角丸6で額縁化。碁盤目・選択破線・環表示の描画は変更なし（寸法保持）。
+- 状態欄の製品化： zoom・寸法・色表示の各区画に画像＋11px副文の統一書体、助言は省略表示対応。
+- 未対応鍵の維持： Curves/Levels/GradientMap/SR/SR予備は画像＋IsEnabled=False＋助言を維持（削除なし）。
+- 不変の検証： x:Name 87件・Click 等操作子は git 差分で完全一致を確認（NAMES-IDENTICAL / CLICK-IDENTICAL）。
+- 検証証跡（t_fec99135）： dotnet build Release 0 errors（CS0618旧ダイアログ警告のみ・既存）。dotnet test Release 164/164合格（既存158維持＋意匠回帰 ThemeRegressionTests 6件）。起動画面の検証記録： WSL headless のため実窓表示は不可。代替として Release ビルド時の Avalonia XAML compile 通過（画像 data・様式の構文検証）＋164試験＋名称/操作子差分一致をもって起動画面構成の検証記録とする。実機の目視・操作検証は後続の組合せ総合試験（t_d1af46ea）に引継ぎ。

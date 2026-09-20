@@ -5,150 +5,481 @@
         x:Class="Compositor.MainWindow"
         x:Name="Root"
         Title="Compositor for Windows" Width="1280" Height="800" Background="#1E1E1E" Foreground="#E8E8E8">
-  <!-- Mac版準拠: 上=ツールバー / 工具ヘッダー / 中=工具レール+画布+層板(右) / 下=状態欄 -->
-  <Grid RowDefinitions="40,42,*,30">
+  <!-- 意匠 t_fec99135: 画像中心の専門製品意匠。Fluent Dark 基調の暗色題材に統一。
+       仕様: 背景 #1E1E1E / 板 #252526 / 頭欄 #2D2D30 / 区切線 #3E3E42 /
+       本文 #E8E8E8 / 副文 #9D9D9D / 補助 #6E6E6E / 選択 #094771+左線 #007ACC /
+       無効 Opacity 0.45。工具列は画像のみ、頭欄・層板は画像+短文。x:Name と操作子名は不変。 -->
+  <Window.Styles>
+    <Style Selector="Button.rail">
+      <Setter Property="Width" Value="40"/>
+      <Setter Property="Height" Value="40"/>
+      <Setter Property="Padding" Value="0"/>
+      <Setter Property="CornerRadius" Value="6"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+    </Style>
+    <Style Selector="Button.rail:pointerover">
+      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="BorderBrush" Value="#3E3E42"/>
+    </Style>
+    <Style Selector="Button.rail:pressed">
+      <Setter Property="Background" Value="#094771"/>
+      <Setter Property="BorderBrush" Value="#007ACC"/>
+    </Style>
+    <Style Selector="Button.rail:disabled">
+      <Setter Property="Opacity" Value="0.45"/>
+    </Style>
+    <Style Selector="Button.bar">
+      <Setter Property="Padding" Value="7,4"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Button.bar:pointerover">
+      <Setter Property="Background" Value="#37373D"/>
+      <Setter Property="BorderBrush" Value="#3E3E42"/>
+    </Style>
+    <Style Selector="Button.bar:pressed">
+      <Setter Property="Background" Value="#094771"/>
+      <Setter Property="BorderBrush" Value="#007ACC"/>
+    </Style>
+    <Style Selector="Button.bar:disabled">
+      <Setter Property="Opacity" Value="0.45"/>
+    </Style>
+    <Style Selector="Button.chip">
+      <Setter Property="Padding" Value="7,4"/>
+      <Setter Property="CornerRadius" Value="5"/>
+      <Setter Property="Background" Value="#2D2D30"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="BorderBrush" Value="#3E3E42"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Button.chip:pointerover">
+      <Setter Property="Background" Value="#37373D"/>
+    </Style>
+    <Style Selector="Button.chip:pressed">
+      <Setter Property="Background" Value="#094771"/>
+      <Setter Property="BorderBrush" Value="#007ACC"/>
+    </Style>
+    <Style Selector="Button.chip:disabled">
+      <Setter Property="Opacity" Value="0.45"/>
+    </Style>
+    <Style Selector="TextBlock.section">
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="#CCCCCC"/>
+      <Setter Property="Margin" Value="2,8,2,0"/>
+    </Style>
+    <Style Selector="TextBlock.dim">
+      <Setter Property="Foreground" Value="#9D9D9D"/>
+    </Style>
+    <Style Selector="ListBoxItem">
+      <Setter Property="Padding" Value="6,3"/>
+      <Setter Property="FontSize" Value="12"/>
+    </Style>
+    <Style Selector="Slider">
+      <Setter Property="Foreground" Value="#007ACC"/>
+    </Style>
+  </Window.Styles>
+  <!-- Mac版準拠: 上=道具欄 / 工具頭欄 / 中=工具列+画布+層板(右) / 下=状態欄 -->
+  <Grid RowDefinitions="44,42,*,30">
     <Border Grid.Row="0" Background="#2D2D30" BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
-      <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,4" VerticalAlignment="Center">
-        <Button Content="+ New" Click="OnNewDocTab" ToolTip.Tip="Ctrl+N: 新しいドキュメントタブ"/>
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+      <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,4" VerticalAlignment="Center">
+        <Button Classes="bar" Click="OnNewDocTab" ToolTip.Tip="Ctrl+N: 新しいドキュメントタブ">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M6 1h2v5h5v2H8v5H6V8H1V6h5V1z" Width="14" Height="14"/>
+            <TextBlock Text="New Tab" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
         <TabControl x:Name="DocTabs" SelectionChanged="OnDocTabChanged" MinWidth="280" MaxWidth="480" Height="30" VerticalAlignment="Center"/>
         <Separator/>
-        <Button Content="Fit" Click="OnFit" ToolTip.Tip="Fit canvas in window"/>
-        <Button Content="100%" Click="OnZoom100" ToolTip.Tip="Actual pixels"/>
-        <Button x:Name="ZoomInBtn" Content="+" Click="OnZoomIn"/>
-        <Button x:Name="ZoomOutBtn" Content="-" Click="OnZoomOut"/>
-        <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Text="100%"/>
+        <Button Classes="bar" Click="OnFit" ToolTip.Tip="Fit canvas in window">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M1 5V1h4v2H3v2H1z M11 1h4v4h-2V3h-2V1z M1 11h2v2h2v2H1v-4z M13 11h2v4h-4v-2h2v-2z" Width="14" Height="14"/>
+            <TextBlock Text="Fit" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnZoom100" ToolTip.Tip="Actual pixels">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h12v12H2V2z M4 4v8h8V4H4z" Width="14" Height="14"/>
+            <TextBlock Text="100%" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" x:Name="ZoomInBtn" Click="OnZoomIn" ToolTip.Tip="Zoom in">
+          <PathIcon Data="M6 1h2v5h5v2H8v5H6V8H1V6h5V1z" Width="14" Height="14"/>
+        </Button>
+        <Button Classes="bar" x:Name="ZoomOutBtn" Click="OnZoomOut" ToolTip.Tip="Zoom out">
+          <PathIcon Data="M2 6h12v2H2V6z" Width="14" Height="14"/>
+        </Button>
+        <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Text="100%" Classes="dim"/>
         <Separator/>
-        <Button x:Name="UndoBtn" Content="Undo" Click="OnUndo" ToolTip.Tip="Ctrl+Z"/>
-        <Button x:Name="RedoBtn" Content="Redo" Click="OnRedo" ToolTip.Tip="Ctrl+Y / Ctrl+Shift+Z"/>
+        <Button Classes="bar" x:Name="UndoBtn" Click="OnUndo" ToolTip.Tip="Ctrl+Z">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M6 2L1 7l5 5V9h4a3 3 0 010 6H6v-2h4a1 1 0 000-2H6V9z" Width="14" Height="14"/>
+            <TextBlock Text="Undo" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" x:Name="RedoBtn" Click="OnRedo" ToolTip.Tip="Ctrl+Y / Ctrl+Shift+Z">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M10 2l5 5-5 5V9H6a3 3 0 000 6h4v-2H6a1 1 0 010-2h4V9z" Width="14" Height="14"/>
+            <TextBlock Text="Redo" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
         <Separator/>
-        <Button x:Name="CopyBtn" Content="Copy" Click="OnCopy" ToolTip.Tip="Ctrl+C"/>
-        <Button x:Name="PasteBtn" Content="Paste" Click="OnPaste" ToolTip.Tip="Ctrl+V"/>
+        <Button Classes="bar" x:Name="CopyBtn" Click="OnCopy" ToolTip.Tip="Ctrl+C">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h9v9H2V2z M5 5h9v9H5V5z" Width="14" Height="14"/>
+            <TextBlock Text="Copy" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" x:Name="PasteBtn" Click="OnPaste" ToolTip.Tip="Ctrl+V">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M5 1h6v3H5V1z M3 3h2v1h6V3h2v12H3V3z M6 8h4v2H6V8z M6 11h4v2H6v-2z" Width="14" Height="14"/>
+            <TextBlock Text="Paste" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
         <Separator/>
-        <Button Content="New" Click="OnNew"/>
-        <Button Content="Import" Click="OnImport" ToolTip.Tip="Ctrl+O"/>
-        <Button Content="Export PNG" Click="OnExport" ToolTip.Tip="Ctrl+E"/>
-        <Button Content="Export JPEG" Click="OnExportJpeg" ToolTip.Tip="画質選択・live preview相当・進捗表示"/>
-        <Button Content="Copy Merged" Click="OnCopyMerged" ToolTip.Tip="Ctrl+Shift+C: 結合コピー"/>
+        <Button Classes="bar" Click="OnNew" ToolTip.Tip="New document">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M3 1h7l3 3v11H3V1z M9 1v4h4" Width="14" Height="14"/>
+            <TextBlock Text="New" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnImport" ToolTip.Tip="Ctrl+O">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M7 1h2v8h3L8 13 4 9h3V1z M2 13h12v2H2v-2z" Width="14" Height="14"/>
+            <TextBlock Text="Import" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnExport" ToolTip.Tip="Ctrl+E">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h12v11H2V2z M5 5a1 1 0 100 2 1 1 0 000-2z M2 11l4-4 3 3 2-2 3 3H2z" Width="14" Height="14"/>
+            <TextBlock Text="PNG" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnExportJpeg" ToolTip.Tip="画質選択・live preview相当・進捗表示">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h12v11H2V2z M5 5a1 1 0 100 2 1 1 0 000-2z M2 11l4-4 3 3 2-2 3 3H2z" Width="14" Height="14"/>
+            <TextBlock Text="JPEG" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnCopyMerged" ToolTip.Tip="Ctrl+Shift+C: 結合コピー">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h9v9H2V2z M5 5h9v9H5V5z" Width="14" Height="14"/>
+            <TextBlock Text="Merged" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
         <Separator/>
-        <Button Content="Save" Click="OnSave" ToolTip.Tip="Ctrl+S: 計画書(.comp)保存"/>
-        <Button Content="Save As" Click="OnSaveAs" ToolTip.Tip="計画書を別名保存"/>
-        <Button Content="Open .comp" Click="OnOpenProject" ToolTip.Tip="計画書(.comp)を開封"/>
-        <Button Content="New Canvas" Click="OnNewCanvas" ToolTip.Tip="寸法・背景を指定して新規画布"/>
-        <TextBox x:Name="DocNameBox" Width="120" ToolTip.Tip="文書表題"/>
-        <Button Content="Rename Doc" Click="OnRenameDoc" ToolTip.Tip="文書表題を変更"/>
+        <Button Classes="bar" Click="OnSave" ToolTip.Tip="Ctrl+S: 計画書(.comp)保存">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M3 1h8l2 2v11H3V1z M5 1v4h6V1H5z M5 9h6v5H5V9z" Width="14" Height="14"/>
+            <TextBlock Text="Save" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnSaveAs" ToolTip.Tip="計画書を別名保存">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M3 1h7v12H3V1z M10 8h4v6h-4V8z M11 9v4 M9 11h4" Width="14" Height="14"/>
+            <TextBlock Text="Save As" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnOpenProject" ToolTip.Tip="計画書(.comp)を開封">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M1 4h5l2 2h7v7H1V4z" Width="14" Height="14"/>
+            <TextBlock Text="Open" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <Button Classes="bar" Click="OnNewCanvas" ToolTip.Tip="寸法・背景を指定して新規画布">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M2 2h12v12H2V2z M8 2v12 M2 8h12" Width="14" Height="14"/>
+            <TextBlock Text="Canvas" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+        <TextBox x:Name="DocNameBox" Width="120" ToolTip.Tip="文書表題" VerticalAlignment="Center"/>
+        <Button Classes="bar" Click="OnRenameDoc" ToolTip.Tip="文書表題を変更">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <PathIcon Data="M11 1l3 3-8 8-3 1 1-3 7-9z" Width="14" Height="14"/>
+            <TextBlock Text="Rename" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
       </StackPanel>
+      </ScrollViewer>
     </Border>
     <Border Grid.Row="1" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
-      <StackPanel Orientation="Horizontal" Spacing="12" Margin="18,0" VerticalAlignment="Center">
-        <TextBlock x:Name="ToolHeaderTitle" Text="Move" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
-        <TextBlock x:Name="ToolHeaderHint" Text="Drag to move" FontSize="12" Foreground="Gray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+      <StackPanel Orientation="Horizontal" Spacing="10" Margin="18,0" VerticalAlignment="Center">
+        <PathIcon Data="M7 1h2v5h5v2H9v5H7v-5H2V6h5V1z" Width="14" Height="14" Foreground="#007ACC" VerticalAlignment="Center"/>
+        <TextBlock x:Name="ToolHeaderTitle" Text="Move" FontWeight="SemiBold" FontSize="13" Foreground="#E8E8E8" VerticalAlignment="Center"/>
+        <Border Width="1" Background="#3E3E42" Margin="4,8"/>
+        <TextBlock x:Name="ToolHeaderHint" Text="Drag to move" FontSize="12" Foreground="#9D9D9D" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </Border>
-    <Grid Grid.Row="2" ColumnDefinitions="56,*,280">
+    <Grid Grid.Row="2" ColumnDefinitions="56,*,296">
       <Border Grid.Column="0" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,1,0">
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel Spacing="4" Margin="0,12,0,12" HorizontalAlignment="Center">
-            <Button x:Name="MoveBtn" Content="M" Width="36" Height="36" Click="OnToolMove" ToolTip.Tip="Move (V)"/>
-            <Button x:Name="HandBtn" Content="H" Width="36" Height="36" Click="OnToolHand" ToolTip.Tip="Hand (H)"/>
-            <Button x:Name="BrushBtn" Content="B" Width="36" Height="36" Click="OnToolBrush" ToolTip.Tip="B: レイヤーに直接描画"/>
-            <Button x:Name="EraserBtn" Content="E" Width="36" Height="36" Click="OnToolEraser" ToolTip.Tip="E: 透明で消去"/>
-            <Button x:Name="MarqueeBtn" Content="M" Width="36" Height="36" Click="OnToolMarquee" ToolTip.Tip="M: 矩形/楕円選択 (Mで切替・Ctrl+Dで解除)"/>
-            <Separator Width="36"/>
-            <Button x:Name="LassoBtn" Content="L" Width="36" Height="28" Click="OnToolLasso" ToolTip.Tip="L: 投げ縄選択 (自由/多角切替・Enter確定・Esc取消)"/>
-            <Button x:Name="WandBtn" Content="W" Width="36" Height="28" Click="OnToolWand" ToolTip.Tip="W: 自動選択 (Tolerance・Contiguous)"/>
-            <Button x:Name="CloneBtn" Content="S" Width="36" Height="28" Click="OnToolClone" ToolTip.Tip="S: クローンスタンプ (Alt-clickで採取点)"/>
-            <Button x:Name="HealBtn" Content="J" Width="36" Height="28" Click="OnToolHeal" ToolTip.Tip="J: スポット修復 (採取不要)"/>
-            <Button x:Name="SmudgeBtn" Content="R" Width="36" Height="28" Click="OnToolSmudge" ToolTip.Tip="R: にじみ・ぼかし・画素押出し (Strength対応)"/>
-            <Button x:Name="EyedropperBtn" Content="I" Width="36" Height="28" Click="OnToolEyedropper" ToolTip.Tip="I: スポイト (Alt-clickでも採取可)"/>
-            <Button x:Name="CropBtn" Content="C" Width="36" Height="28" Click="OnToolCrop" ToolTip.Tip="C: 切抜き (Alt=対称・Space=移動・Enter確定・Esc取消)"/>
-            <Button x:Name="DistortBtn" Content="T" Width="36" Height="28" Click="OnToolDistort" ToolTip.Tip="T: 自由変形・歪み (角を掴んで歪み・Shift=軸固定・Enter確定・Esc取消)"/>
-            <Button x:Name="ShapeBtn" Content="U" Width="36" Height="28" Click="OnToolShape" ToolTip.Tip="U: 形状 (矩形/角丸/楕円・Shift=正方形・Alt=中心・新規層)"/>
-            <Button x:Name="GradientBtn" Content="G" Width="36" Height="28" Click="OnToolGradient" ToolTip.Tip="G: グラデーション (引張描画・Shift=45°・Enter確定・Esc取消)"/>
-            <Button Content="F" Width="36" Height="28" Click="OnContentFill" ToolTip.Tip="選択範囲を周囲から近似補填 (Mac ContentFillの近似・小穴用)"/>
-            <Button Content="SR" Width="36" Height="28" FontSize="10" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。"/>
+            <Button Classes="rail" x:Name="MoveBtn" Click="OnToolMove" ToolTip.Tip="Move (V)">
+              <PathIcon Data="M7 0h2v6h6v2H9v6H7V8H1V6h6V0z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="HandBtn" Click="OnToolHand" ToolTip.Tip="Hand (H)">
+              <PathIcon Data="M4 7V3h1v4h1V2h1v5h1V3h1v4h1V6h1v4l-2 4H4L2 11l2-1V7z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="BrushBtn" Click="OnToolBrush" ToolTip.Tip="B: レイヤーに直接描画">
+              <PathIcon Data="M12 1l3 3-8 8-3 3 1-4 7-7z M3 13l3-1-2-2-1 3z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="EraserBtn" Click="OnToolEraser" ToolTip.Tip="E: 透明で消去">
+              <PathIcon Data="M6 1h6l4 4-7 7H4l-3-3 5-8z M2 13h12v2H2v-2z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="MarqueeBtn" Click="OnToolMarquee" ToolTip.Tip="M: 矩形/楕円選択 (Mで切替・Ctrl+Dで解除)">
+              <PathIcon Data="M2 2h12v12H2V2z M4 4v8h8V4H4z" Width="16" Height="16"/>
+            </Button>
+            <Separator Width="36" Opacity="0.5"/>
+            <Button Classes="rail" x:Name="LassoBtn" Height="36" Click="OnToolLasso" ToolTip.Tip="L: 投げ縄選択 (自由/多角切替・Enter確定・Esc取消)">
+              <PathIcon Data="M8 1c4 0 7 3 7 7 0 2-1 3-2 4l-1 3H9L7 13C4 12 1 10 1 6c0-3 3-5 7-5z M5 5c2-1 5 0 6 2 1 1 0 3-2 3-2 0-4-1-4-3 0-1 0-1 0-2z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="WandBtn" Height="36" Click="OnToolWand" ToolTip.Tip="W: 自動選択 (Tolerance・Contiguous)">
+              <PathIcon Data="M12 1l3 3-8 8-2-2 7-9z M1 12l2-2 1 1-1 3-2-2z M13 1h2v2h-2V1z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="CloneBtn" Height="36" Click="OnToolClone" ToolTip.Tip="S: クローンスタンプ (Alt-clickで採取点)">
+              <PathIcon Data="M7 1a5 5 0 100 10A5 5 0 007 1z M10 10l5-1 1 5-5 1-1-5z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="HealBtn" Height="36" Click="OnToolHeal" ToolTip.Tip="J: スポット修復 (採取不要)">
+              <PathIcon Data="M6 2h4v4h4v4h-4v4H6v-4H2V6h4V2z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="SmudgeBtn" Height="36" Click="OnToolSmudge" ToolTip.Tip="R: にじみ・ぼかし・画素押出し (Strength対応)">
+              <PathIcon Data="M8 1c3 3 6 6 6 9a6 6 0 11-12 0c0-3 3-6 6-9z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="EyedropperBtn" Height="36" Click="OnToolEyedropper" ToolTip.Tip="I: スポイト (Alt-clickでも採取可)">
+              <PathIcon Data="M11 1l3 3-2 2-4-4 2-2z M9 5L2 12l1 3 3 1 6-7-3-4z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="CropBtn" Height="36" Click="OnToolCrop" ToolTip.Tip="C: 切抜き (Alt=対称・Space=移動・Enter確定・Esc取消)">
+              <PathIcon Data="M1 5V1h4v2H3v2H1z M11 1h4v4h-2V3h-2V1z M1 11h2v2h2v2H1v-4z M13 11h2v4h-4v-2h2v-2z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="DistortBtn" Height="36" Click="OnToolDistort" ToolTip.Tip="T: 自由変形・歪み (角を掴んで歪み・Shift=軸固定・Enter確定・Esc取消)">
+              <PathIcon Data="M2 2h12v12H2V2z M6 2l2 3 2-3H6z M6 14l2-3 2 3H6z M2 6l3 2-3 2V6z M14 6l-3 2 3 2V6z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="ShapeBtn" Height="36" Click="OnToolShape" ToolTip.Tip="U: 形状 (矩形/角丸/楕円・Shift=正方形・Alt=中心・新規層)">
+              <PathIcon Data="M8 1l7 7-7 7-7-7 7-7z M8 5l3 3-3 3-3-3 3-3z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" x:Name="GradientBtn" Height="36" Click="OnToolGradient" ToolTip.Tip="G: グラデーション (引張描画・Shift=45°・Enter確定・Esc取消)">
+              <PathIcon Data="M2 2h12v12H2V2z M2 2h4v12H2V2z M6 2h3v12H6V2z" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" Height="36" Click="OnContentFill" ToolTip.Tip="選択範囲を周囲から近似補填 (Mac ContentFillの近似・小穴用)">
+              <PathIcon Data="M11 1l4 4-8 8-4-4 8-8z M2 12l4 4" Width="16" Height="16"/>
+            </Button>
+            <Button Classes="rail" Height="36" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。">
+              <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4a4 4 0 100 8 4 4 0 000-8z M3 3l10 10-1 1L2 4l1-1z" Width="16" Height="16"/>
+            </Button>
           </StackPanel>
         </ScrollViewer>
       </Border>
-      <Border Grid.Column="1" Background="#1E1E1E">
+      <Border Grid.Column="1" Background="#1E1E1E" Padding="12">
+        <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="6" Padding="0">
         <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
           <Image x:Name="CanvasImage" Stretch="None"
                  PointerPressed="OnCanvasPointerPressed"
                  PointerMoved="OnCanvasPointerMoved"
                  PointerReleased="OnCanvasPointerReleased"/>
         </ScrollViewer>
+        </Border>
       </Border>
       <Border Grid.Column="2" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1,0,0,0">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Spacing="6" Margin="6,6,6,6">
+          <StackPanel Spacing="6" Margin="8,6,8,10">
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Layers" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-              <TextBlock x:Name="LayerCountLabel" Foreground="Gray" FontSize="11" VerticalAlignment="Center" Text="0"/>
+              <PathIcon Data="M1 4h5l2 2h7v7H1V4z" Width="14" Height="14" Foreground="#9D9D9D" VerticalAlignment="Center"/>
+              <TextBlock Text="Layers" FontWeight="SemiBold" FontSize="12" Foreground="#CCCCCC" VerticalAlignment="Center"/>
+              <TextBlock x:Name="LayerCountLabel" Foreground="#9D9D9D" FontSize="11" VerticalAlignment="Center" Text="0"/>
             </StackPanel>
-            <ListBox x:Name="LayerList" Height="220" SelectionChanged="OnLayerSelected"/>
+            <ListBox x:Name="LayerList" Height="220" SelectionChanged="OnLayerSelected" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="5"/>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="+Layer" Click="OnAddLayer"/>
-              <Button Content="-Layer" Click="OnDeleteLayer" ToolTip.Tip="Del"/>
-              <Button Content="Up" Click="OnUp"/>
-              <Button Content="Down" Click="OnDown"/>
-              <Button Content="Duplicate" Click="OnDuplicateLayer" ToolTip.Tip="選択レイヤーを複製"/>
-              <Button Content="Merge Down" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合 (フォルダ内・クリップ込)"/>
-              <Button Content="Merge Group" Click="OnMergeGroup" ToolTip.Tip="選択フォルダの中身を結合"/>
-              <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged"/>
-              <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止"/>
+              <Button Classes="chip" Click="OnAddLayer" ToolTip.Tip="新規空白層">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M6 1h2v5h5v2H8v5H6V8H1V6h5V1z" Width="12" Height="12"/>
+                  <TextBlock Text="Layer" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnDeleteLayer" ToolTip.Tip="Del">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3h10v2H3V3z M4 3V1h8v2 M5 5h2v8H5V5z M9 5h2v8H9V5z M3 13h10v2H3v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Delete" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnUp" ToolTip.Tip="層を上へ">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 10l5-5 5 5-1 1-4-4-4 4-1-1z" Width="12" Height="12"/>
+                  <TextBlock Text="Up" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnDown" ToolTip.Tip="層を下へ">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 6l5 5 5-5-1-1-4 4-4-4-1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="Down" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnDuplicateLayer" ToolTip.Tip="選択レイヤーを複製">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h9v9H2V2z M5 5h9v9H5V5z" Width="12" Height="12"/>
+                  <TextBlock Text="Duplicate" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合 (フォルダ内・クリップ込)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M7 1h2v8h3L8 13 4 9h3V1z M2 13h12v2H2v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Merge" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMergeGroup" ToolTip.Tip="選択フォルダの中身を結合">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 4h5l2 2h7v7H1V4z M4 8h8v1H4V8z" Width="12" Height="12"/>
+                  <TextBlock Text="Group" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged" ToolTip.Tip="層の表示/非表示 (目玉相当)"/>
+              <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止 (錠相当)"/>
             </WrapPanel>
-            <TextBlock Text="Mask (Mac 層覆面相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Mask" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="+White" Click="OnMaskAddWhite" ToolTip.Tip="全表示覆面を追加 (選択あり=選択外を残す)"/>
-              <Button Content="+Black" Click="OnMaskAddBlack" ToolTip.Tip="全隠蔽覆面を追加"/>
-              <Button Content="Del Mask" Click="OnMaskDelete" ToolTip.Tip="覆面を削除"/>
-              <Button Content="On/Off" Click="OnMaskToggleEnable" ToolTip.Tip="覆面の有効/無効"/>
-              <Button Content="EditPx/Mask" Click="OnMaskSelectTarget" ToolTip.Tip="描画対象: 画素/覆面 切替 (B=白・E=黒で覆面描画)"/>
-              <Button Content="Invert" Click="OnMaskInvert" ToolTip.Tip="覆面を反転"/>
-              <Button Content="Feather" Click="OnMaskFeather" ToolTip.Tip="覆面をぼかす (羽化 r=2)"/>
-              <Button Content="Link" Click="OnMaskLinkToggle" ToolTip.Tip="層と覆面の連結/解除 (解除時は矢印で覆面のみ移動)"/>
+              <Button Classes="chip" Click="OnMaskAddWhite" ToolTip.Tip="全表示覆面を追加 (選択あり=選択外を残す)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z" Width="12" Height="12"/>
+                  <TextBlock Text="White" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskAddBlack" ToolTip.Tip="全隠蔽覆面を追加">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4a4 4 0 100 8 4 4 0 000-8z" Width="12" Height="12"/>
+                  <TextBlock Text="Black" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskDelete" ToolTip.Tip="覆面を削除">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3h10v2H3V3z M4 3V1h8v2 M5 5h2v8H5V5z M9 5h2v8H9V5z M3 13h10v2H3v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Delete" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskToggleEnable" ToolTip.Tip="覆面の有効/無効">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 8a6 6 0 0112 0 6 6 0 01-12 0z M5 8a3 3 0 016 0 3 3 0 01-6 0z" Width="12" Height="12"/>
+                  <TextBlock Text="On/Off" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskSelectTarget" ToolTip.Tip="描画対象: 画素/覆面 切替 (B=白・E=黒で覆面描画)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3l10 10-1 1L2 4l1-1z M13 3L3 13l-1-1L12 2l1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="Target" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskInvert" ToolTip.Tip="覆面を反転">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h5v12H2V2z M9 2h5v12H9V2z" Width="12" Height="12"/>
+                  <TextBlock Text="Invert" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskFeather" ToolTip.Tip="覆面をぼかす (羽化 r=2)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M4 4h2v2H4V4z M8 3h3v3H8V3z M3 9h3v3H3V9z M9 9h4v4H9V9z M5 13h3v2H5v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Feather" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnMaskLinkToggle" ToolTip.Tip="層と覆面の連結/解除 (解除時は矢印で覆面のみ移動)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M6 7a3 3 0 015-2l1 1-2 2 1 1 2-2 1 1a3 3 0 01-5 4l-1-1 1-1 1 1z M10 9a3 3 0 01-5 2l-1-1 2-2-1-1-2 2-1-1a3 3 0 015-4l1 1-1 1-1-1z" Width="12" Height="12"/>
+                  <TextBlock Text="Link" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Group / Clip (Mac フォルダ・切抜覆面相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Group / Clip" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="+Folder" Click="OnGroupAdd" ToolTip.Tip="選択層の隣にフォルダを作成"/>
-              <Button Content="Group" Click="OnGroupSelected" ToolTip.Tip="選択層をフォルダにまとめる"/>
-              <Button Content="Ungroup" Click="OnUngroup" ToolTip.Tip="フォルダを解除 (中身は残る)"/>
-              <Button Content="Clip" Click="OnToggleClip" ToolTip.Tip="下層への切抜覆面 設定/解除"/>
+              <Button Classes="chip" Click="OnGroupAdd" ToolTip.Tip="選択層の隣にフォルダを作成">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 4h5l2 2h7v7H1V4z M6 1h2v5h5v2H8v5H6V8H1V6h5V1z" Width="12" Height="12"/>
+                  <TextBlock Text="Folder" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnGroupSelected" ToolTip.Tip="選択層をフォルダにまとめる">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 4h5l2 2h7v7H1V4z M4 8h8v1H4V8z" Width="12" Height="12"/>
+                  <TextBlock Text="Group" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnUngroup" ToolTip.Tip="フォルダを解除 (中身は残る)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 4h5l2 2h7v7H1V4z M4 11h8v1H4v-1z" Width="12" Height="12"/>
+                  <TextBlock Text="Ungroup" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnToggleClip" ToolTip.Tip="下層への切抜覆面 設定/解除">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M6 7a3 3 0 015-2l1 1-2 2 1 1 2-2 1 1a3 3 0 01-5 4l-1-1 1-1 1 1z M10 9a3 3 0 01-5 2l-1-1 2-2-1-1-2 2-1-1a3 3 0 015-4l1 1-1 1-1-1z" Width="12" Height="12"/>
+                  <TextBlock Text="Clip" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Shape (Mac ShapeTool相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Shape" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button x:Name="ShapeKindBtn" Content="Rectangle" Click="OnShapeKindCycle" ToolTip.Tip="Rectangle→RoundedRect→Ellipse 循環"/>
+              <Button Classes="chip" x:Name="ShapeKindBtn" Content="Rectangle" Click="OnShapeKindCycle" ToolTip.Tip="Rectangle→RoundedRect→Ellipse 循環"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Rename" VerticalAlignment="Center"/>
+              <TextBlock Text="Rename" VerticalAlignment="Center" Classes="dim"/>
               <TextBox x:Name="RenameBox" Width="130"/>
-              <Button Content="Apply" Click="OnRename"/>
+              <Button Classes="chip" Click="OnRename" ToolTip.Tip="層名を変更">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M11 1l3 3-8 8-3 1 1-3 7-9z" Width="12" Height="12"/>
+                  <TextBlock Text="Apply" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Blend" VerticalAlignment="Center"/>
+              <TextBlock Text="Blend" VerticalAlignment="Center" Classes="dim"/>
               <ComboBox x:Name="BlendBox" Width="120" SelectionChanged="OnBlendChanged"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Opacity" VerticalAlignment="Center"/>
-              <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="140" ValueChanged="OnOpacityChanged"/>
-              <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%"/>
+              <TextBlock Text="Opacity" VerticalAlignment="Center" Classes="dim"/>
+              <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="132" ValueChanged="OnOpacityChanged"/>
+              <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Scale %" VerticalAlignment="Center"/>
-              <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="140" ValueChanged="OnScaleChanged"/>
+              <TextBlock Text="Scale %" VerticalAlignment="Center" Classes="dim"/>
+              <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="132" ValueChanged="OnScaleChanged"/>
             </StackPanel>
-            <TextBlock Text="Transform" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Transform" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Rotate" VerticalAlignment="Center"/>
-              <Slider x:Name="RotateSlider" Minimum="-180" Maximum="180" Width="120" ValueChanged="OnRotateChanged"/>
-              <TextBlock x:Name="RotateLabel" VerticalAlignment="Center" Text="0°"/>
+              <TextBlock Text="Rotate" VerticalAlignment="Center" Classes="dim"/>
+              <Slider x:Name="RotateSlider" Minimum="-180" Maximum="180" Width="112" ValueChanged="OnRotateChanged"/>
+              <TextBlock x:Name="RotateLabel" VerticalAlignment="Center" Text="0°" Foreground="#E8E8E8"/>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="Rotate +90" Click="OnRotate90" ToolTip.Tip="時計回りに90°"/>
-              <Button Content="Flip H" Click="OnFlipH"/>
-              <Button Content="Flip V" Click="OnFlipV"/>
-              <Button Content="Distort" Click="OnToolDistort" ToolTip.Tip="T: 自由変形・歪み (角を掴んで歪み・Shift=軸固定)"/>
+              <Button Classes="chip" Click="OnRotate90" ToolTip.Tip="時計回りに90°">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M10 2l5 5-5 5V9H6a3 3 0 000 6h4v-2H6a1 1 0 010-2h4V9z" Width="12" Height="12"/>
+                  <TextBlock Text="+90°" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnFlipH" ToolTip.Tip="水平反転">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M7 1h2v14H7V1z M2 4l4 4-4 4V4z M14 4l-4 4 4 4V4z" Width="12" Height="12"/>
+                  <TextBlock Text="Flip H" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnFlipV" ToolTip.Tip="垂直反転">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 7h14v2H1V7z M4 2l4 4 4-4H4z M4 14l4-4 4 4H4z" Width="12" Height="12"/>
+                  <TextBlock Text="Flip V" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnToolDistort" ToolTip.Tip="T: 自由変形・歪み (角を掴んで歪み・Shift=軸固定)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M6 2l2 3 2-3H6z M6 14l2-3 2 3H6z M2 6l3 2-3 2V6z M14 6l-3 2 3 2V6z" Width="12" Height="12"/>
+                  <TextBlock Text="Distort" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Transform 数値入力 (Mac TransformInspector相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Transform 数値入力" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
               <TextBlock Text="X" VerticalAlignment="Center" Width="14"/>
               <TextBox x:Name="TxX" Width="56"/>
@@ -163,10 +494,15 @@
               <TextBlock Text="°" VerticalAlignment="Center" Width="14"/>
               <TextBox x:Name="TxAngle" Width="56" ToolTip.Tip="回転 角時計回り"/>
               <CheckBox x:Name="LockRatioCheck" Content="Lock" ToolTip.Tip="縦横比を固定 (Mac link相当)"/>
-              <Button Content="Apply" Click="OnTransformApply" ToolTip.Tip="数値を層へ反映 (Enter)"/>
+              <Button Classes="chip" Click="OnTransformApply" ToolTip.Tip="数値を層へ反映 (Enter)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 8l4 4 8-9-1-1-7 8-3-3-1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="Apply" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Sample" VerticalAlignment="Center"/>
+              <TextBlock Text="Sample" VerticalAlignment="Center" Classes="dim"/>
               <ComboBox x:Name="SamplingBox" Width="130" SelectedIndex="2" SelectionChanged="OnSamplingChanged" ToolTip.Tip="Nearest=近傍・Smooth=双線形・High=高品質 (Mac Sampling相当)">
                 <ComboBoxItem>Nearest</ComboBoxItem>
                 <ComboBoxItem>Smooth</ComboBoxItem>
@@ -174,21 +510,51 @@
               </ComboBox>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button x:Name="DistortApplyBtn" Content="Distort確定" Click="OnDistortApply" ToolTip.Tip="歪みを画素へ適用 (Enter)"/>
-              <Button x:Name="DistortCancelBtn" Content="取消" Click="OnDistortCancel" ToolTip.Tip="歪みを破棄 (Esc)"/>
+              <Button Classes="chip" x:Name="DistortApplyBtn" Click="OnDistortApply" ToolTip.Tip="歪みを画素へ適用 (Enter)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 8l4 4 8-9-1-1-7 8-3-3-1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="Distort確定" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="DistortCancelBtn" Click="OnDistortCancel" ToolTip.Tip="歪みを破棄 (Esc)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3l10 10-1 1L2 4l1-1z M13 3L3 13l-1-1L12 2l1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="取消" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Canvas (Mac CanvasSize/ImageSize相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Canvas" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="Canvas Size" Click="OnCanvasSize" ToolTip.Tip="画布寸法を変更 (アンカー+拡張色)"/>
-              <Button Content="Image Size" Click="OnImageSize" ToolTip.Tip="画像寸法を変更 (リサンプル+Sampling)"/>
+              <Button Classes="chip" Click="OnCanvasSize" ToolTip.Tip="画布寸法を変更 (アンカー+拡張色)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M8 2v12 M2 8h12" Width="12" Height="12"/>
+                  <TextBlock Text="Canvas Size" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnImageSize" ToolTip.Tip="画像寸法を変更 (リサンプル+Sampling)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v11H2V2z M5 5a1 1 0 100 2 1 1 0 000-2z M2 11l4-4 3 3 2-2 3 3H2z" Width="12" Height="12"/>
+                  <TextBlock Text="Image Size" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="Flip Canvas H" Click="OnFlipCanvasH" ToolTip.Tip="画布全体を水平反転 (Mac flipCanvas相当)"/>
-              <Button Content="Flip Canvas V" Click="OnFlipCanvasV" ToolTip.Tip="画布全体を垂直反転"/>
+              <Button Classes="chip" Click="OnFlipCanvasH" ToolTip.Tip="画布全体を水平反転 (Mac flipCanvas相当)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M7 1h2v14H7V1z M2 4l4 4-4 4V4z M14 4l-4 4 4 4V4z" Width="12" Height="12"/>
+                  <TextBlock Text="Flip H" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnFlipCanvasV" ToolTip.Tip="画布全体を垂直反転">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M1 7h14v2H1V7z M4 2l4 4 4-4H4z M4 14l4-4 4 4H4z" Width="12" Height="12"/>
+                  <TextBlock Text="Flip V" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Crop (Mac Crop相当)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Crop" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Ratio" VerticalAlignment="Center"/>
+              <TextBlock Text="Ratio" VerticalAlignment="Center" Classes="dim"/>
               <ComboBox x:Name="CropRatioBox" Width="110" SelectedIndex="0" SelectionChanged="OnCropRatioChanged" ToolTip.Tip="Free=自由・Original=元比・1:1・4:3・16:9">
                 <ComboBoxItem>Free</ComboBoxItem>
                 <ComboBoxItem>Original</ComboBoxItem>
@@ -198,70 +564,124 @@
               </ComboBox>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button x:Name="CropApplyBtn" Content="Crop確定" Click="OnCropApply" ToolTip.Tip="切抜きを適用 (Enter)"/>
-              <Button x:Name="CropCancelBtn" Content="取消" Click="OnCropCancel" ToolTip.Tip="切抜きを破棄 (Esc)"/>
+              <Button Classes="chip" x:Name="CropApplyBtn" Click="OnCropApply" ToolTip.Tip="切抜きを適用 (Enter)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 8l4 4 8-9-1-1-7 8-3-3-1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="Crop確定" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="CropCancelBtn" Click="OnCropCancel" ToolTip.Tip="切抜きを破棄 (Esc)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3l10 10-1 1L2 4l1-1z M13 3L3 13l-1-1L12 2l1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="取消" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Adjust (non-destructive)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Adjust" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Bright" VerticalAlignment="Center" Width="52"/>
-              <Slider x:Name="BrightSlider" Minimum="-100" Maximum="100" Width="120" ValueChanged="OnBrightChanged"/>
-              <TextBlock x:Name="BrightLabel" VerticalAlignment="Center" Text="0"/>
+              <TextBlock Text="Bright" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <Slider x:Name="BrightSlider" Minimum="-100" Maximum="100" Width="112" ValueChanged="OnBrightChanged"/>
+              <TextBlock x:Name="BrightLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Contrast" VerticalAlignment="Center" Width="52"/>
-              <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Width="120" ValueChanged="OnContrastChanged"/>
-              <TextBlock x:Name="ContrastLabel" VerticalAlignment="Center" Text="0"/>
+              <TextBlock Text="Contrast" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Width="112" ValueChanged="OnContrastChanged"/>
+              <TextBlock x:Name="ContrastLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Satur." VerticalAlignment="Center" Width="52"/>
-              <Slider x:Name="SaturSlider" Minimum="0" Maximum="200" Width="120" ValueChanged="OnSaturChanged"/>
-              <TextBlock x:Name="SaturLabel" VerticalAlignment="Center" Text="100"/>
+              <TextBlock Text="Satur." VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <Slider x:Name="SaturSlider" Minimum="0" Maximum="200" Width="112" ValueChanged="OnSaturChanged"/>
+              <TextBlock x:Name="SaturLabel" VerticalAlignment="Center" Text="100" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Blur" VerticalAlignment="Center" Width="52"/>
-              <Slider x:Name="BlurSlider" Minimum="0" Maximum="25" Width="120" ValueChanged="OnBlurChanged"/>
-              <TextBlock x:Name="BlurLabel" VerticalAlignment="Center" Text="0"/>
+              <TextBlock Text="Blur" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <Slider x:Name="BlurSlider" Minimum="0" Maximum="25" Width="112" ValueChanged="OnBlurChanged"/>
+              <TextBlock x:Name="BlurLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="Invert" Click="OnInvert" ToolTip.Tip="選択レイヤーを反転 (Undo可)"/>
-              <Button Content="Curves (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のカーブ調整。Windows版では未対応です。"/>
-              <Button Content="Levels (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のレベル調整。Windows版では未対応です。"/>
-              <Button Content="GradientMap (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のグラデーションマップ。Windows版では未対応です。"/>
+              <Button Classes="chip" Click="OnInvert" ToolTip.Tip="選択レイヤーを反転 (Undo可)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h5v12H2V2z M9 2h5v12H9V2z" Width="12" Height="12"/>
+                  <TextBlock Text="Invert" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" IsEnabled="False" ToolTip.Tip="Mac版のカーブ調整。Windows版では未対応です。">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 13C5 13 5 8 8 8s3-5 6-5M2 13h12" Width="12" Height="12"/>
+                  <TextBlock Text="Curves (未対応)" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" IsEnabled="False" ToolTip.Tip="Mac版のレベル調整。Windows版では未対応です。">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 13V8 M6 13V5 M10 13V3 M14 13V6 M1 13h14" Width="12" Height="12"/>
+                  <TextBlock Text="Levels (未対応)" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" IsEnabled="False" ToolTip.Tip="Mac版のグラデーションマップ。Windows版では未対応です。">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M2 2h4v12H2V2z M6 2h3v12H6V2z" Width="12" Height="12"/>
+                  <TextBlock Text="GradientMap (未対応)" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="Brush" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Brush" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Size" VerticalAlignment="Center"/>
-              <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="120" Value="24"/>
+              <TextBlock Text="Size" VerticalAlignment="Center" Classes="dim"/>
+              <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="112" Value="24"/>
               <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色 (旧6色・FGと連動)"/>
             </StackPanel>
-            <TextBlock Text="Color (Mac 調色板相当: FG/BG・12色+追加・X入替・D初期化)" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Color" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <Button x:Name="FgBtn" Content="FG" Width="44" Click="OnFgPick" ToolTip.Tip="前景色 (Color Picker)"/>
-              <Button x:Name="BgBtn" Content="BG" Width="44" Click="OnBgPick" ToolTip.Tip="背景色 (Color Picker)"/>
-              <Button Content="X" Click="OnSwapColors" ToolTip.Tip="前景/背景を入替 (X)"/>
-              <Button Content="D" Click="OnResetColors" ToolTip.Tip="黒/白に戻す (D)"/>
+              <Button Classes="chip" x:Name="FgBtn" Click="OnFgPick" ToolTip.Tip="前景色 (Color Picker)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1c3 3 6 6 6 9a6 6 0 11-12 0c0-3 3-6 6-9z" Width="12" Height="12"/>
+                  <TextBlock Text="FG" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="BgBtn" Click="OnBgPick" ToolTip.Tip="背景色 (Color Picker)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1c3 3 6 6 6 9a6 6 0 11-12 0c0-3 3-6 6-9z" Width="12" Height="12"/>
+                  <TextBlock Text="BG" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnSwapColors" ToolTip.Tip="前景/背景を入替 (X)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3l10 10-1 1L2 4l1-1z M13 3L3 13l-1-1L12 2l1 1z" Width="12" Height="12"/>
+                  <TextBlock Text="X" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnResetColors" ToolTip.Tip="黒/白に戻す (D)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M13 8A5 5 0 103 8h2a3 3 0 116 0h-2z" Width="12" Height="12"/>
+                  <TextBlock Text="D" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <ListBox x:Name="PaletteBox" Width="170" Height="64" SelectionChanged="OnPaletteSelected" ToolTip.Tip="調色板 (選択=前景色に設定)"/>
+              <ListBox x:Name="PaletteBox" Width="170" Height="64" SelectionChanged="OnPaletteSelected" ToolTip.Tip="調色板 (選択=前景色に設定)" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="5"/>
               <StackPanel Spacing="4">
-                <Button Content="+" Click="OnPaletteAdd" ToolTip.Tip="前景色を調色板へ追加"/>
-                <Button Content="-" Click="OnPaletteDelete" ToolTip.Tip="選択色を削除"/>
+                <Button Classes="chip" Click="OnPaletteAdd" ToolTip.Tip="前景色を調色板へ追加">
+                  <PathIcon Data="M6 1h2v5h5v2H8v5H6V8H1V6h5V1z" Width="12" Height="12"/>
+                </Button>
+                <Button Classes="chip" Click="OnPaletteDelete" ToolTip.Tip="選択色を削除">
+                  <PathIcon Data="M2 6h12v2H2V6z" Width="12" Height="12"/>
+                </Button>
               </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Hard" VerticalAlignment="Center" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
-              <Slider x:Name="HardnessSlider" Minimum="0" Maximum="100" Width="120" Value="100" ValueChanged="OnHardnessChanged"/>
-              <TextBlock x:Name="HardnessLabel" VerticalAlignment="Center" Text="100%"/>
+              <TextBlock Text="Hard" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
+              <Slider x:Name="HardnessSlider" Minimum="0" Maximum="100" Width="112" Value="100" ValueChanged="OnHardnessChanged"/>
+              <TextBlock x:Name="HardnessLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Space" VerticalAlignment="Center" ToolTip.Tip="間隔 径比% (ダブ配置ピッチ)"/>
-              <Slider x:Name="SpacingSlider" Minimum="1" Maximum="200" Width="120" Value="15" ValueChanged="OnSpacingChanged"/>
-              <TextBlock x:Name="SpacingLabel" VerticalAlignment="Center" Text="15%"/>
+              <TextBlock Text="Space" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="間隔 径比% (ダブ配置ピッチ)"/>
+              <Slider x:Name="SpacingSlider" Minimum="1" Maximum="200" Width="112" Value="15" ValueChanged="OnSpacingChanged"/>
+              <TextBlock x:Name="SpacingLabel" VerticalAlignment="Center" Text="15%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Opac" VerticalAlignment="Center" ToolTip.Tip="不透明度 1-100% (Smudge系はStrength・1-0キー対応)"/>
-              <Slider x:Name="BrushOpacitySlider" Minimum="1" Maximum="100" Width="120" Value="100" ValueChanged="OnBrushOpacityChanged"/>
-              <TextBlock x:Name="BrushOpacityLabel" VerticalAlignment="Center" Text="100%"/>
+              <TextBlock Text="Opac" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="不透明度 1-100% (Smudge系はStrength・1-0キー対応)"/>
+              <Slider x:Name="BrushOpacitySlider" Minimum="1" Maximum="100" Width="112" Value="100" ValueChanged="OnBrushOpacityChanged"/>
+              <TextBlock x:Name="BrushOpacityLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <CheckBox x:Name="CloneAlignedCheck" Content="Aligned" IsChecked="True" Checked="OnCloneAlignedChanged" Unchecked="OnCloneAlignedChanged" ToolTip.Tip="採取源がブラシと一緒に移動 (OFF=毎ストローク採取点から)"/>
@@ -285,10 +705,10 @@
             <StackPanel Orientation="Horizontal" Spacing="6">
               <CheckBox x:Name="EyedropAllCheck" Content="Eyedrop All Layers" IsChecked="True" ToolTip.Tip="ON=可視合成から採取・OFF=選択層のみ"/>
             </StackPanel>
-            <TextBlock Text="Selection" FontWeight="SemiBold" FontSize="12"/>
+            <TextBlock Text="Selection" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
-              <Button x:Name="MarqueeShapeBtn" Content="Rect" Click="OnToggleMarqueeShape" ToolTip.Tip="M: 矩形/楕円切替 (Shift=正方形・Alt=中心)"/>
-              <Button x:Name="LassoKindBtn" Content="Freehand" Click="OnToggleLassoKind" ToolTip.Tip="L: 自由投繩/多角投繩切替"/>
+              <Button Classes="chip" x:Name="MarqueeShapeBtn" Content="Rect" Click="OnToggleMarqueeShape" ToolTip.Tip="M: 矩形/楕円切替 (Shift=正方形・Alt=中心)"/>
+              <Button Classes="chip" x:Name="LassoKindBtn" Content="Freehand" Click="OnToggleLassoKind" ToolTip.Tip="L: 自由投繩/多角投繩切替"/>
               <ComboBox x:Name="SelModeBox" Width="110" SelectedIndex="0" SelectionChanged="OnSelModeChanged" ToolTip.Tip="New=置換・Add=加算(Shift)・Subtract=減算(Alt)">
                 <ComboBoxItem>New</ComboBoxItem>
                 <ComboBoxItem>Add</ComboBoxItem>
@@ -296,30 +716,49 @@
               </ComboBox>
             </WrapPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="52" ToolTip.Tip="Wand許容差 0-255"/>
-              <Slider x:Name="WandToleranceSlider" Minimum="0" Maximum="255" Width="120" Value="32"/>
+              <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="52" Classes="dim" ToolTip.Tip="Wand許容差 0-255"/>
+              <Slider x:Name="WandToleranceSlider" Minimum="0" Maximum="255" Width="112" Value="32"/>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
               <CheckBox x:Name="WandContiguousCheck" Content="Contiguous" IsChecked="True" ToolTip.Tip="隣接のみ選択 (OFF=全体から類似色)"/>
               <CheckBox x:Name="WandSampleAllCheck" Content="All Layers" ToolTip.Tip="可視合成から読む (OFF=選択層のみ)"/>
             </WrapPanel>
             <WrapPanel Orientation="Horizontal">
-              <Button Content="Deselect" Click="OnDeselect" ToolTip.Tip="Ctrl+D: 選択解除"/>
-              <Button Content="Delete Sel" Click="OnDeleteSelection" ToolTip.Tip="Del: 選択範囲の画素を消去"/>
+              <Button Classes="chip" Click="OnDeselect" ToolTip.Tip="Ctrl+D: 選択解除">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M3 3l10 10-1 1L2 4l1-1z" Width="12" Height="12"/>
+                  <TextBlock Text="Deselect" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" Click="OnDeleteSelection" ToolTip.Tip="Del: 選択範囲の画素を消去">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3h10v2H3V3z M4 3V1h8v2 M5 5h2v8H5V5z M9 5h2v8H9V5z M3 13h10v2H3v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Delete Sel" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
-            <TextBlock Text="M=Rect/Ellipse L=Lasso/Poly W=Wand Enter=確定 Esc=取消 Move内Drag=枠移動 Ctrl+Drag=画素移動 Alt+Drag=複写" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
-            <TextBlock Text="B=Brush E=Eraser S=Clone J=Heal R=Smudge I=Eyedrop C=Crop T=Distort M=Marquee V=Move H=Hand [=size Shift+[=hard 1-0=opac Ctrl+Z/Y Ctrl+C/V Ctrl+N/O/E Ctrl+D Del Arrows=nudge" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
+            <TextBlock Text="M=Rect/Ellipse L=Lasso/Poly W=Wand Enter=確定 Esc=取消 Move内Drag=枠移動 Ctrl+Drag=画素移動 Alt+Drag=複写" TextWrapping="Wrap" Foreground="#6E6E6E" FontSize="11"/>
+            <TextBlock Text="B=Brush E=Eraser S=Clone J=Heal R=Smudge I=Eyedrop C=Crop T=Distort M=Marquee V=Move H=Hand [=size Shift+[=hard 1-0=opac Ctrl+Z/Y Ctrl+C/V Ctrl+N/O/E Ctrl+D Del Arrows=nudge" TextWrapping="Wrap" Foreground="#6E6E6E" FontSize="11"/>
             <Button x:Name="SubjectRemovalBtn" Content="Subject Removal (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です." Height="0" Width="0" Opacity="0"/>
           </StackPanel>
         </ScrollViewer>
       </Border>
     </Grid>
     <Border Grid.Row="3" Background="#2D2D30" BorderBrush="#3E3E42" BorderThickness="0,1,0,0">
-      <StackPanel Orientation="Horizontal" Spacing="16" Margin="18,0" VerticalAlignment="Center">
-        <TextBlock x:Name="StatusZoom" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="100%"/>
-        <TextBlock x:Name="StatusDoc" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="800 x 600 px"/>
-        <TextBlock FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="sRGB · Transparent"/>
-        <TextBlock x:Name="StatusHint" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="Drag to move"/>
+      <StackPanel Orientation="Horizontal" Spacing="14" Margin="18,0" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+          <PathIcon Data="M2 2h12v12H2V2z M4 4v8h8V4H4z" Width="12" Height="12" Foreground="#9D9D9D" VerticalAlignment="Center"/>
+          <TextBlock x:Name="StatusZoom" FontSize="11" Foreground="#9D9D9D" VerticalAlignment="Center" Text="100%"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+          <PathIcon Data="M2 2h12v11H2V2z M5 5a1 1 0 100 2 1 1 0 000-2z M2 11l4-4 3 3 2-2 3 3H2z" Width="12" Height="12" Foreground="#9D9D9D" VerticalAlignment="Center"/>
+          <TextBlock x:Name="StatusDoc" FontSize="11" Foreground="#9D9D9D" VerticalAlignment="Center" Text="800 x 600 px"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+          <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4a4 4 0 100 8 4 4 0 000-8z" Width="12" Height="12" Foreground="#6E6E6E" VerticalAlignment="Center"/>
+          <TextBlock FontSize="11" Foreground="#6E6E6E" VerticalAlignment="Center" Text="sRGB · Transparent"/>
+        </StackPanel>
+        <TextBlock x:Name="StatusHint" FontSize="11" Foreground="#9D9D9D" VerticalAlignment="Center" Text="Drag to move" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
     </Border>
   </Grid>
