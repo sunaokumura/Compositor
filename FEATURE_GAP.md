@@ -50,8 +50,17 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 
 ## 未移植（×・UIで「未対応」明示済み：無効ボタン＋ツールチップ）
 - SubjectRemoval（Vision）/ GuidedMatte（マット精緻化・対象外として維持）
-- 調整シートUI残件（GradientMap単独・露出単独のダイアログ。Curves/Levels/Hue/FilterはP0で対話UI化済み・旧無効ボタンは意匠回帰互換のため残置）
+- 調整シートUI残件（GradientMap単独・露出単独の破壊ダイアログ。P1のLive層対話（追加/再調整・10種対応）で非破壊路は代替可。旧無効ボタンは意匠回帰互換のため残置）
 - MaskTracing
+
+## P1非破壊深化（t_a81fcba0・2026-09-21・WORLD_BEST_PAINT §4 P1）
+- Adjustment Brush式塗り調整（黒覆面つき調整層＋Brush白塗り・覆面変調合成で塗所のみ効く）
+- filter mask・Live層（Noise/Lens/GaussBlur/MotionBlurの非破壊層化・覆面つき・並替/再調整/表示切替・.comp v8）
+- QuickShape（線/矩形/楕円/三角snap・15°磁石・離すと層化）・ベクター線＋Correct line（制御点移動/線幅/単純化/結線・再焼成）・ベクター磁石（端点吸着・既定ON）
+- spare channel（保存/選択へ/削除・v8往復）・Quick mask（Brush白黒描画・赤overlay・選択へ確定）
+- Time-lapse記録（操作名＋時刻・Start/Stop/Export/Clear・session-only・連番画像はP2）
+- Simple preset（Brush既定・白黒・描く）・Persona弱移植（描く/整える/出す）・Contextual頭欄（新工具2種の題＋助言追加）
+- 不採用維持：生成AI Fill・ML自動切抜・Vision系・MSIX署名
 
 ## 未移植（×・実用レベル後の次フェーズ・すべてUIで「未対応」明示済み）
 - 詳細は TOOLS_PARITY.md の×7件を参照（SubjectRemoval/GuidedMatte/調整シートUI残件はいずれも無効ボタン＋ツールチップ。P0でCurves.../Levels.../Hue.../Filter...対話を追加済み）。

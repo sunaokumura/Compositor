@@ -33,3 +33,10 @@
 - dotnet test Release: 全合格 (P0WorldBestTests 21件含む。内 headless E2E 1件: PNG書出→ImageImport.DecodeFile→Curves破壊→Hue調整層→gap wand選択→Solo→JPEG Export/CopyMerged PNGの復号確認)。
 - XAML: Avalonia compile通過 (Release build時)＋x:Name計99件 (既存87件不変＋新規12件)・操作子名は追加のみで既存不変。
 - 実機GUI目視 (Import→編集→Exportの手操作) はWSL headless制約のため未実施。後続実機工程で `Curves.../Levels.../Hue.../Filter...` 対話・Solo・View°・ASE/Harmony/Profile・`/`検索の目視確認を引き継ぐ。
+
+## P1検証追記 (t_a81fcba0・2026-09-21・WSL headless)
+- dotnet build Release: 0 errors (CS0618旧ダイアログ警告のみ・既存。Apps反映は利用者許可なく禁止のため未実施)。
+- dotnet test Release: 307/307合格 (P1NonDestructiveTests 20件含む。内 headless E2E 1件: PNG書出→ImageImport.DecodeFile→AdjBrush塗り→Live層→QuickShape判定→Vector層化→channel/QuickMask→Timelapse→PNG/JPEG復号→.comp v8保存開封の往復確認)。
+- XAML: Avalonia compile通過 (Release build時)＋x:Name計114件 (既存99件不変＋新規15件: P1ButtonsPanel・AdjBrush/LiveFilterAdd/LiveRetune/LiveUp/LiveDown/QuickShape/Vector/CorrectLine/ChannelSave/ChannelLoad/Timelapse各Btn・QuickMaskCheck・PersonaBox・SimpleCheck)・操作子名は追加のみで既存不変。
+- .comp v8: 新規保存はversion 8 (Live filter 4種・ベクター線・spare channel)。v1-7読込維持 (Validateは1-8受理)。
+- 実機GUI目視 (Import→P1編集→Exportの手操作) はWSL headless制約のため未実施。後続実機工程で AdjBrush塗り・Live層再調整/並替・QuickShape/Vector描画・Correct line・Channel・QuickMask・Time-lapse・Persona/Simple の目視確認を引き継ぐ。

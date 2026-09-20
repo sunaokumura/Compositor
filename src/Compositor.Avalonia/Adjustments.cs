@@ -1029,7 +1029,7 @@ public static class BlurOps
 }
 
 // ---------- Adjustment layers (LayerAdjustment.swift / AdjustmentEditing.swift subset) ----------
-public enum AdjustmentKind { Hsv, Levels, Curves, Exposure, GradientMap, Grain }
+public enum AdjustmentKind { Hsv, Levels, Curves, Exposure, GradientMap, Grain, Noise, Lens, GaussBlur, MotionBlur }
 
 public class LayerAdjustment
 {
@@ -1040,6 +1040,12 @@ public class LayerAdjustment
     public ExposureSettings Exposure = new();
     public GradientMapSettings GradientMap = new();
     public GrainSettings Grain = new();
+    // P1 Live層 (.comp v8): 破壊適用済み engine (Noise/Lens/Blur) の非破壊層化。
+    public NoiseSettings Noise = new();
+    public double LensDistortion;
+    public double GaussRadius = 2.0;
+    public double MotionAngle;
+    public double MotionDistance = 5.0;
 
     public bool IsValid => Kind switch
     {
@@ -1049,6 +1055,10 @@ public class LayerAdjustment
         AdjustmentKind.Exposure => Exposure.IsValid,
         AdjustmentKind.GradientMap => GradientMap.IsValid,
         AdjustmentKind.Grain => Grain.IsValid,
+        AdjustmentKind.Noise => true,
+        AdjustmentKind.Lens => LensDistortion is >= -100 and <= 100,
+        AdjustmentKind.GaussBlur => GaussRadius is >= 0.1 and <= 100,
+        AdjustmentKind.MotionBlur => MotionDistance is >= 0.5 and <= 200,
         _ => false,
     };
 
@@ -1069,6 +1079,69 @@ public class LayerAdjustment
             case AdjustmentKind.Grain:
                 GrainOps.ApplyToBitmap(bmp, Grain, originX, originY, unitsPerPixel);
                 break;
+            case AdjustmentKind.Noise: NoiseOps.ApplyToBitmap(bmp, Noise); break;
+            case AdjustmentKind.Lens: LensOps.ApplyToBitmap(bmp, LensDistortion); break;
+            case AdjustmentKind.GaussBlur:
+                ApplyLayerBlur(bmp, GaussRadius, 0, 0);
+                break;
+            case AdjustmentKind.MotionBlur:
+                ApplyLayerBlur(bmp, 0, MotionAngle, MotionDistance);
+                break;
+        }
+    }
+
+    /// <summary>P1 Live Blur: 層縁外広がりなしの合成内 blur (margin なし近似)。
+    /// 端は clamp 扱い (BlurOps カーネル準拠の自前畳込)。</summary>
+    static void ApplyLayerBlur(SKBitmap bmp, double radius, double angleDeg, double distance)
+    {
+        if (bmp == null) return;
+        if (radius > 0)
+        {
+            int r = Math.Max(1, (int)Math.Ceiling(radius));
+            var src = bmp.Pixels;
+            var dst = new SKColor[src.Length];
+            int w = bmp.Width, h = bmp.Height;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    long sr = 0, sg = 0, sb = 0, sa = 0; int n = 0;
+                    for (int dy = -r; dy <= r; dy++)
+                    {
+                        int yy = Math.Clamp(y + dy, 0, h - 1);
+                        for (int dx = -r; dx <= r; dx++)
+                        {
+                            int xx = Math.Clamp(x + dx, 0, w - 1);
+                            var p = src[yy * w + xx];
+                            sr += p.Red; sg += p.Green; sb += p.Blue; sa += p.Alpha; n++;
+                        }
+                    }
+                    dst[y * w + x] = new SKColor((byte)(sr / n), (byte)(sg / n), (byte)(sb / n), (byte)(sa / n));
+                }
+            for (int i = 0; i < dst.Length; i++) bmp.SetPixel(i % w, i / w, dst[i]);
+        }
+        else if (distance > 0)
+        {
+            int steps = Math.Max(1, (int)Math.Ceiling(distance));
+            double rad = angleDeg * Math.PI / 180.0;
+            double dx = Math.Cos(rad), dy = Math.Sin(rad);
+            var src = bmp.Pixels;
+            int w = bmp.Width, h = bmp.Height;
+            var dst = new SKColor[src.Length];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    long sr = 0, sg = 0, sb = 0, sa = 0;
+                    for (int s = 0; s < steps; s++)
+                    {
+                        double t = steps == 1 ? 0 : (s / (double)(steps - 1) - 0.5) * distance;
+                        int xx = Math.Clamp((int)Math.Round(x + dx * t), 0, w - 1);
+                        int yy = Math.Clamp((int)Math.Round(y + dy * t), 0, h - 1);
+                        var p = src[yy * w + xx];
+                        sr += p.Red; sg += p.Green; sb += p.Blue; sa += p.Alpha;
+                    }
+                    dst[y * w + x] = new SKColor((byte)(sr / steps), (byte)(sg / steps), (byte)(sb / steps), (byte)(sa / steps));
+                }
+            for (int i = 0; i < dst.Length; i++) bmp.SetPixel(i % w, i / w, dst[i]);
         }
     }
 
@@ -1081,6 +1154,11 @@ public class LayerAdjustment
         Exposure = Exposure.Clone(),
         GradientMap = GradientMap.Clone(),
         Grain = Grain.Clone(),
+        Noise = Noise.Clone(),
+        LensDistortion = LensDistortion,
+        GaussRadius = GaussRadius,
+        MotionAngle = MotionAngle,
+        MotionDistance = MotionDistance,
     };
 }
 

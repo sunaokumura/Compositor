@@ -1,6 +1,6 @@
 // Compositor — project save/open (.comp package, Mac ProjectStore.swift subset).
 // Package layout: <name>.comp/ manifest.json + images/<layer UUID>.png + images/<layer UUID>.mask.png
-// Manifest versions 1-7 readable, new saves always version 7 (adjustment layers).
+// Manifest versions 1-8 readable, new saves always version 8 (P1: Live filter kinds + vector + spare channels).
 // PNG assets only (Mac parity); atomic replace via sibling temp dir + move.
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -34,6 +34,24 @@ public class ManifestShape
     public double cornerRadius { get; set; }
 }
 
+public class ManifestVectorPoint { public double x { get; set; } public double y { get; set; } }
+
+public class ManifestVector
+{
+    public List<ManifestVectorPoint> points { get; set; } = new();
+    public double width { get; set; }
+    public bool closed { get; set; }
+}
+
+public class ManifestChannel
+{
+    public Guid id { get; set; }
+    public string name { get; set; } = "";
+    public string channelFile { get; set; }
+    public int width { get; set; }
+    public int height { get; set; }
+}
+
 public class ManifestLayer
 {
     public Guid id { get; set; }
@@ -53,12 +71,14 @@ public class ManifestLayer
     public ManifestTransform maskPlacement { get; set; }
     public bool? maskLinked { get; set; }
     public ManifestShape shape { get; set; }
+    public ManifestVector vector { get; set; }   // P1 v8: ベクター線の編集データ
+    public bool? isVector { get; set; }
 }
 
 public class ProjectManifest
 {
     public string format { get; set; } = "com.compositor.project";
-    public int version { get; set; } = 7;
+    public int version { get; set; } = 8;
     public string colorSpace { get; set; } = "sRGB";
     public double? resolution { get; set; }
     public Guid documentID { get; set; }
@@ -66,15 +86,17 @@ public class ProjectManifest
     public int height { get; set; }
     public Guid? activeLayerID { get; set; }
     public List<ManifestLayer> layers { get; set; } = new();
+    public List<ManifestChannel> channels { get; set; }   // P1 v8: spare channel
 }
 #endregion
 
 /// <summary>Project save/open engine (Mac ProjectStore.swift + EditorSession+Projects.swift subset).
-/// Layers/groups/masks/clips/adjustments/shapes round-trip; undo history and viewport stay session-only.</summary>
+/// Layers/groups/masks/clips/adjustments/shapes/vectors/channels round-trip; undo history and viewport stay session-only.
+/// Manifest versions 1-8 readable, new saves always version 8 (P1: Live filter kinds + vector + spare channels).</summary>
 public static class ProjectFormat
 {
     public const string FormatId = "com.compositor.project";
-    public const int CurrentVersion = 7;
+    public const int CurrentVersion = 8;
     public const long MaxManifestBytes = 4L * 1024 * 1024;
     public const long MaxAssetBytes = 512L * 1024 * 1024;
     public const int MaxSide = 30_000;
@@ -200,7 +222,34 @@ public static class ProjectFormat
                     kind = l.Shape.Kind.ToString(), r = l.Shape.R, g = l.Shape.G, b = l.Shape.B,
                     cornerRadius = l.Shape.CornerRadius,
                 };
+            if (l.IsVectorLayer && l.Vector != null)   // P1 v8 ベクター線
+            {
+                VectorStrokeOps.Validate(l.Vector);
+                rec.isVector = true;
+                rec.vector = new ManifestVector
+                {
+                    width = l.Vector.Width, closed = l.Vector.Closed,
+                    points = l.Vector.Points.Select(p => new ManifestVectorPoint { x = p.X, y = p.Y }).ToList(),
+                };
+            }
             m.layers.Add(rec);
+        }
+        if (doc.SpareChannels.Count > 0)   // P1 v8 spare channel
+        {
+            if (doc.SpareChannels.Count > SpareChannelOps.MaxChannels)
+                throw new ProjectFormatException("Too many channels.");
+            m.channels = new List<ManifestChannel>();
+            foreach (var ch in doc.SpareChannels)
+            {
+                if (ch.Mask == null || ch.Mask.Length != ch.W * ch.H || ch.W < 1 || ch.H < 1)
+                    throw new ProjectFormatException($"Bad channel '{ch.Name}'.");
+                var id = Guid.NewGuid();
+                m.channels.Add(new ManifestChannel
+                {
+                    id = id, name = ch.Name ?? "Channel",
+                    channelFile = $"{id}.channel.png", width = ch.W, height = ch.H,
+                });
+            }
         }
         Validate(m);
         return m;
@@ -211,7 +260,7 @@ public static class ProjectFormat
     public static void Validate(ProjectManifest m)
     {
         if (m.format != FormatId) throw new ProjectFormatException("Not a Compositor project.");
-        if (m.version is < 1 or > 7) throw new ProjectFormatException($"Unsupported version {m.version} (supports 1-7).");
+        if (m.version is < 1 or > 8) throw new ProjectFormatException($"Unsupported version {m.version} (supports 1-8).");
         if (m.colorSpace != "sRGB") throw new ProjectFormatException("colorSpace must be sRGB.");
         if (m.resolution is double r && (!double.IsFinite(r) || r < 1 || r > 9600))
             throw new ProjectFormatException("Bad resolution.");
@@ -254,6 +303,37 @@ public static class ProjectFormat
                 throw new ProjectFormatException($"Bad image file on '{l.name}'.");
             if (isGroup && l.imageFile != null)
                 throw new ProjectFormatException($"Group '{l.name}' cannot carry pixels.");
+            if (l.isVector == true || l.vector != null)   // P1 v8 ベクター線
+            {
+                if (m.version < 8)
+                    throw new ProjectFormatException($"Vector layer '{l.name}' needs version 8.");
+                if (l.vector == null || l.vector.points == null || l.vector.points.Count < 2
+                    || l.vector.points.Count > VectorStrokeOps.MaxPoints)
+                    throw new ProjectFormatException($"Bad vector on '{l.name}'.");
+                if (l.vector.width is < VectorStrokeOps.MinWidth or > VectorStrokeOps.MaxWidth)
+                    throw new ProjectFormatException($"Bad vector width on '{l.name}'.");
+            }
+            if (l.adjustmentKind != null &&   // P1 v8 Live filter kinds
+                (l.adjustmentKind == nameof(AdjustmentKind.Noise) || l.adjustmentKind == nameof(AdjustmentKind.Lens)
+                || l.adjustmentKind == nameof(AdjustmentKind.GaussBlur) || l.adjustmentKind == nameof(AdjustmentKind.MotionBlur))
+                && m.version < 8)
+                throw new ProjectFormatException($"Live filter '{l.name}' needs version 8.");
+        }
+        if (m.channels != null && m.channels.Count > 0)   // P1 v8 spare channel
+        {
+            if (m.version < 8) throw new ProjectFormatException("Channels need version 8+.");
+            if (m.channels.Count > SpareChannelOps.MaxChannels) throw new ProjectFormatException("Too many channels.");
+            var cids = new HashSet<Guid>();
+            foreach (var c in m.channels)
+            {
+                if (!cids.Add(c.id)) throw new ProjectFormatException("Duplicate channel id.");
+                if (string.IsNullOrWhiteSpace(c.name) || c.name.Length > 1024)
+                    throw new ProjectFormatException("Bad channel name.");
+                if (c.channelFile != $"{c.id}.channel.png") throw new ProjectFormatException($"Bad channel file on '{c.name}'.");
+                if (c.width is < 1 or > MaxSide || c.height is < 1 or > MaxSide
+                    || (long)c.width * c.height > MaxImagePixels)
+                    throw new ProjectFormatException($"Bad channel size on '{c.name}'.");
+            }
         }
         ValidateHierarchy(m);
         ValidateClips(m);
@@ -394,6 +474,20 @@ public static class ProjectFormat
                 assets[$"{l.Id}.mask.png"] = EncodeMaskPng(l.Mask, l.MaskW, l.MaskH);
             }
         }
+        if (manifest.channels != null && manifest.channels.Count > 0)   // P1 v8 spare channel
+        {
+            if (manifest.channels.Count != doc.SpareChannels.Count)
+                throw new ProjectFormatException("Channel manifest mismatch.");
+            for (int i = 0; i < doc.SpareChannels.Count; i++)
+            {
+                var ch = doc.SpareChannels[i];
+                long n = (long)ch.W * ch.H;
+                if (n > MaxImagePixels - maskPixels)
+                    throw new ProjectFormatException($"Channel too large on '{ch.Name}'.");
+                maskPixels += n;
+                assets[manifest.channels[i].channelFile] = EncodeMaskPng(ch.Mask, ch.W, ch.H);
+            }
+        }
 
         string parent = Path.GetDirectoryName(Path.GetFullPath(packagePath)) ?? ".";
         string stage = Path.Combine(parent, ".comp-stage-" + Guid.NewGuid().ToString("N"));
@@ -519,8 +613,39 @@ public static class ProjectFormat
                     throw new ProjectFormatException($"Bad shape on '{rec.name}'.");
                 l.Shape = new ShapeInfo { Kind = k, R = (float)rec.shape.r, G = (float)rec.shape.g, B = (float)rec.shape.b, CornerRadius = (float)rec.shape.cornerRadius };
             }
+            if (rec.vector != null || rec.isVector == true)   // P1 v8 ベクター線
+            {
+                if (rec.vector == null) throw new ProjectFormatException($"Bad vector on '{rec.name}'.");
+                var pts = rec.vector.points.Select(p => new SKPoint((float)p.x, (float)p.y)).ToList();
+                var vs = new VectorStroke { Points = pts, Width = (float)rec.vector.width, Closed = rec.vector.closed };
+                VectorStrokeOps.Validate(vs);
+                l.Vector = vs;
+                l.IsVectorLayer = true;
+            }
             doc.Layers.Add(l);
             byId[l.Id] = l;
+        }
+        if (m.channels != null && m.channels.Count > 0)   // P1 v8 spare channel
+        {
+            foreach (var c in m.channels)
+            {
+                string p = SafeName(imgDir, c.channelFile);
+                var fi = new FileInfo(p);
+                if (!fi.Exists || fi.Length > MaxAssetBytes) throw new ProjectFormatException($"Missing channel for '{c.name}'.");
+                byte[] bytes = File.ReadAllBytes(p);
+                if (!IsPng(bytes)) throw new ProjectFormatException($"Missing channel for '{c.name}'.");
+                using var bmp = SKBitmap.Decode(bytes) ?? throw new ProjectFormatException($"Missing channel for '{c.name}'.");
+                if (bmp.Width != c.width || bmp.Height != c.height)
+                    throw new ProjectFormatException($"Bad channel size on '{c.name}'.");
+                if ((long)bmp.Width * bmp.Height > MaxImagePixels - maskPixels)
+                    throw new ProjectFormatException("Channel too large.");
+                maskPixels += (long)bmp.Width * bmp.Height;
+                var gray = new byte[bmp.Width * bmp.Height];
+                for (int y = 0; y < bmp.Height; y++)
+                    for (int x = 0; x < bmp.Width; x++)
+                        gray[y * bmp.Width + x] = bmp.GetPixel(x, y).Red;
+                doc.SpareChannels.Add(new SpareChannel { Name = c.name, Mask = gray, W = c.width, H = c.height });
+            }
         }
         doc.MarkSaved();
         return doc;

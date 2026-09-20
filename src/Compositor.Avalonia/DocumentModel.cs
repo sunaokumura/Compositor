@@ -50,6 +50,9 @@ public class Layer
     public Guid? ClipSourceId;         // live/clipping mask base (Mac maskSourceID)
     public ShapeInfo Shape;            // shape style metadata (raster layer; Mac LayerShape subset)
     public float FolderW, FolderH;     // group transform size in doc px (Mac group transform.size; 0 = doc size at creation)
+    // P1 ベクター線 (CLIP STUDIO ベクター層の考え): ラスタ焼成後も編集用データを保持。
+    public VectorStroke Vector;
+    public bool IsVectorLayer;
 
     public SKRect Bounds => Bitmap == null ? SKRect.Empty : SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
     public bool HitTest(SKPoint p) => Bitmap != null && Bounds.Contains(p.X, p.Y);
@@ -70,6 +73,7 @@ public class LayerSnapshot
         public bool MaskEnabled, MaskLinked, MaskSelected; public SKPoint MaskOffset;
         public Guid? ClipSourceId; public ShapeInfo Shape;
         public float FolderW, FolderH;
+        public VectorStroke Vector; public bool IsVectorLayer;   // P1 ベクター線
         public string Name; public bool Visible; public bool Locked;
         public float Opacity, ScaleX, ScaleY; public SKPoint Position; public SKBlendMode Blend;
         public LayerSampling Sampling;
@@ -97,6 +101,7 @@ public class LayerSnapshot
                 MaskEnabled = l.MaskEnabled, MaskLinked = l.MaskLinked, MaskSelected = l.MaskSelected,
                 MaskOffset = l.MaskOffset, ClipSourceId = l.ClipSourceId, Shape = l.Shape?.Clone(),
                 FolderW = l.FolderW, FolderH = l.FolderH,
+                Vector = l.Vector?.Clone(), IsVectorLayer = l.IsVectorLayer,
                 Opacity = l.Opacity, ScaleX = l.ScaleX, ScaleY = l.ScaleY, Position = l.Position, Blend = l.Blend,
                 Sampling = l.Sampling,
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
@@ -120,6 +125,7 @@ public class LayerSnapshot
             it.Layer.MaskEnabled = it.MaskEnabled; it.Layer.MaskLinked = it.MaskLinked;
             it.Layer.MaskSelected = it.MaskSelected; it.Layer.MaskOffset = it.MaskOffset;
             it.Layer.ClipSourceId = it.ClipSourceId; it.Layer.Shape = it.Shape?.Clone();
+            it.Layer.Vector = it.Vector?.Clone(); it.Layer.IsVectorLayer = it.IsVectorLayer;
             it.Layer.FolderW = it.FolderW; it.Layer.FolderH = it.FolderH;
             it.Layer.Name = it.Name; it.Layer.Visible = it.Visible; it.Layer.Locked = it.Locked;
             it.Layer.Opacity = it.Opacity; it.Layer.ScaleX = it.ScaleX; it.Layer.ScaleY = it.ScaleY; it.Layer.Position = it.Position;
@@ -197,6 +203,14 @@ public class Document
     public bool IsModified;             // set by UndoStack.Push; cleared by save/load (Mac history.isModified)
     public Guid? SoloLayerId;           // P0 Solo 表示: 非null時は対象層のみ表示 (view 状態・Undo/保存対象外)
     public float CanvasAngle;           // P0 canvas 回転: 表示のみの回転角 (-180,180]・画素不変)
+    // P1 session 状態 (Undo/保存対象外。spare channel のみ .comp v8 で保存):
+    public List<SpareChannel> SpareChannels = new();   // spare channel (Affinity/GIMP の考え)
+    public byte[] QuickMask; public int QuickMaskW, QuickMaskH;
+    public bool QuickMaskEnabled;
+    public List<TimelapseEntry> Timelapse = new();      // 過程記録 (session-only)
+    public bool TimelapseRecording;
+    public PersonaKind Persona = PersonaKind.Paint;     // Persona弱移植 (描く/整える/出す)
+    public bool SimpleMode;                             // Simple preset (初心者縮小)
     /// <summary>Mark the document saved (Mac history.markSaved subset).</summary>
     public void MarkSaved() => IsModified = false;
     /// <summary>Geometry limit shared with NewCanvas (Mac CanvasDocument.validDimension).</summary>
@@ -247,7 +261,18 @@ public class Document
         {
             if (layer.IsGroup || !LayerHierarchy.IsEffectivelyVisible(this, layer)) continue;
             if (layer is { IsAdjustmentLayer: true, Adjustment: not null })
-                layer.Adjustment.ApplyToComposite(acc);
+            {
+                // P1: 覆面つき調整層 (Adjustment Brush/filter mask) は覆面で変調する。
+                if (MaskOps.IsActive(layer))
+                {
+                    using var before = new SKBitmap(acc.Width, acc.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                    using (var c2 = new SKCanvas(before))
+                        c2.DrawBitmap(acc, 0, 0);
+                    layer.Adjustment.ApplyToComposite(acc);
+                    P1Compose.BlendMasked(acc, before, layer, Width, Height);
+                }
+                else layer.Adjustment.ApplyToComposite(acc);
+            }
             else if (layer.ClipSourceId is Guid s && byId.TryGetValue(s, out var b))
                 DrawClipped(canvas, this, layer, b, 1f);
             else

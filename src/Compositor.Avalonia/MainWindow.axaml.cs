@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     readonly List<Document> openDocs = new();
     bool updatingTabs;
 
-    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand, Crop, Distort, Shape, Gradient }
+    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand, Crop, Distort, Shape, Gradient, QuickShape, VectorLine }
     Tool currentTool = Tool.Move;
     List<SKPoint> strokePoints;       // active brush stroke (layer-pixel space)
     // --- paint settings (Mac BrushSettings subset) ---
@@ -241,8 +241,10 @@ public partial class MainWindow : Window
                 string mask = MaskOps.HasMask(l) ? (l.MaskSelected ? "[M*]" : "[M]") : "";
                 string clip = l.ClipSourceId != null ? "[C]" : "";
                 string shape = l.Shape != null ? "[S]" : "";
+                string adj = l.IsAdjustmentLayer ? (LiveLayerOps.IsLiveKind(l.Adjustment?.Kind ?? AdjustmentKind.Hsv) ? "[Live] " : "[A] ") : "";   // P1 Live標識
+                string vec = l.IsVectorLayer ? "[V] " : "";   // P1 ベクター標識
                 string solo = doc.SoloLayerId == l.Id ? "[Solo] " : "";   // P0 Solo 標識
-                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{solo}{kind}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
+                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{solo}{kind}{adj}{vec}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
             }
             if (LayerList.ItemCount > 0)
             {
@@ -287,6 +289,7 @@ public partial class MainWindow : Window
             DrawCheckerboard(canvas, w, h);
             doc.Draw(canvas, zoom, new SKRect(0, 0, doc.Width, doc.Height));
             DrawSelectionOverlay(canvas);
+            DrawQuickMaskOverlay(canvas);   // P1 Quick mask 赤 overlay
             DrawDraftOverlay(canvas);
             DrawTransformOverlays(canvas);
             DrawFloatingPreview(canvas);
@@ -375,6 +378,15 @@ public partial class MainWindow : Window
             return;
         }
         MarchingAnts(canvas, p => canvas.DrawRect(r, p));
+    }
+
+    /// <summary>P1 Quick mask の赤 overlay (非選択域を半透明赤で覆う)。</summary>
+    void DrawQuickMaskOverlay(SKCanvas canvas)
+    {
+        if (doc == null || !doc.QuickMaskEnabled || doc.QuickMask == null) return;
+        if (doc.QuickMaskW != doc.Width || doc.QuickMaskH != doc.Height) return;
+        using var overlay = QuickMaskOps.RenderOverlay(doc);
+        canvas.DrawBitmap(overlay, new SKRect(0, 0, doc.Width * zoom, doc.Height * zoom));
     }
 
     /// <summary>未確定ドラフトのrubber-band (Mac lassoDraft相当).</summary>
@@ -500,6 +512,7 @@ public partial class MainWindow : Window
         if (floating != null) CommitFloating();   // 画素移動中は工具切替で確定
         if (gradientDraft != null && t != Tool.Gradient) CommitGradient();   // 保留グラデは工具切替で適用 (Mac resolveGradient相当)
         if (t != Tool.Shape) shapeRect = null;
+        if (t != Tool.QuickShape && t != Tool.VectorLine) quickShapePoints = null;   // P1 stroke 破棄
         if (t != Tool.Lasso) lassoDraft = null;
         if (t != Tool.Polygon) { polygonDraft = null; hasPolygonCursor = false; }
         if (t != Tool.Distort) CancelDistortSilently();
@@ -538,6 +551,8 @@ public partial class MainWindow : Window
             Tool.Gradient => ("Gradient (G)", gradientDraft != null
                 ? "Enter=確定 · Esc=取消 · Shift=45° · 端点は再ドラッグで調整"
                 : "Dragで引張描画 · Shift=45° · Enter確定 · Esc取消"),
+            Tool.QuickShape => ("QuickShape", ContextualHint.For("QuickShape") + " · 離すと層化"),
+            Tool.VectorLine => ("Vector", ContextualHint.For("Vector") + " · 離すと層化"),
             _ => (t.ToString(), ""),
         };
         if (ToolHeaderTitle != null) ToolHeaderTitle.Text = title;
@@ -1853,6 +1868,23 @@ public partial class MainWindow : Window
             }
             return;
         }
+        if (currentTool == Tool.QuickShape || currentTool == Tool.VectorLine)   // P1: 離すと図形/ベクター層化
+        {
+            BeginQuickShape(docPoint);
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (doc.QuickMaskEnabled && (currentTool == Tool.Brush || currentTool == Tool.Eraser))   // P1 Quick mask へ描画
+        {
+            undoStack.Push(doc);
+            strokeOnQuickMask = true;
+            quickMaskLast = docPoint;
+            QuickMaskOps.Paint(doc, new List<SKPoint> { docPoint }, BrushDiameter(),
+                currentTool == Tool.Brush ? (byte)255 : (byte)0);
+            RenderCanvas();
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
         if (currentTool == Tool.Brush || currentTool == Tool.Eraser)
         {
             for (int i = doc.Layers.Count - 1; i >= 0; i--)
@@ -2038,6 +2070,7 @@ public partial class MainWindow : Window
         strokePoints = null;
         strokeDocPoints = null;
         strokeOnMask = false;
+        strokeOnQuickMask = false;   // P1 Quick mask stroke も cleared
         dragLayer = null;
         drawnDabs = 0;
         activeSmudge = null;
@@ -2055,6 +2088,20 @@ public partial class MainWindow : Window
     void OnCanvasPointerMoved(object s, PointerEventArgs e)
     {
         var docPoint = CanvasPoint(e, (Control)s);
+        if (quickShapePoints != null && (currentTool == Tool.QuickShape || currentTool == Tool.VectorLine))   // P1 stroke 記録
+        {
+            quickShapePoints.Add(CanvasPoint(e, (Control)s));
+            return;
+        }
+        if (strokeOnQuickMask)   // P1 Quick mask へ描画
+        {
+            var qp = CanvasPoint(e, (Control)s);
+            QuickMaskOps.Paint(doc, new List<SKPoint> { quickMaskLast, qp }, BrushDiameter(),
+                currentTool == Tool.Brush ? (byte)255 : (byte)0);
+            quickMaskLast = qp;
+            RenderCanvas();
+            return;
+        }
         if (currentTool == Tool.Crop && cropDrag != null)
         {
             CropMoved(docPoint, e.KeyModifiers);
@@ -2326,6 +2373,13 @@ public partial class MainWindow : Window
         }
         floatingFrameDrag = false;
         handPanning = false;
+        if (quickShapePoints != null) FinishQuickShape();   // P1: 離すと図形/ベクター層化
+        if (strokeOnQuickMask)   // P1 Quick mask stroke 終了
+        {
+            strokeOnQuickMask = false;
+            TimelapseOps.Record(doc, "quickmask");
+            RenderCanvas();
+        }
         EndPaintStroke();
         e.Pointer.Capture(null);
     }

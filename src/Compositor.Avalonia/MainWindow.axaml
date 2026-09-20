@@ -674,6 +674,85 @@
                 </StackPanel>
               </Button>
             </WrapPanel>
+            <TextBlock Text="P1 Non-destructive" Classes="section"/>
+            <WrapPanel Orientation="Horizontal" x:Name="P1ButtonsPanel">
+              <Button Classes="chip" x:Name="AdjBrushBtn" Click="OnAdjBrushDialog" ToolTip.Tip="塗った所だけ調整が効く層を作る (Adjustment Brush相当・覆面へBrushで塗る)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 12c2-4 4-6 6-6s4 2 6 6M8 6v9M5 15h6" Width="12" Height="12"/>
+                  <TextBlock Text="AdjBrush..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="LiveFilterAddBtn" Click="OnLiveFilterAdd" ToolTip.Tip="係数を後から再調整できる Live層を追加 (filter maskつき)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 8h12M2 12h12M2 4h12M4 4v10M10 4v10" Width="12" Height="12"/>
+                  <TextBlock Text="Live層..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="LiveRetuneBtn" Click="OnLiveRetune" ToolTip.Tip="選択中の調整層・Live層の係数を再調整">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M4 4h2v2H4V4z M8 3h3v3H8V3z M3 9h3v3H3V9z M9 9h4v4H9V9z" Width="12" Height="12"/>
+                  <TextBlock Text="再調整..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="LiveUpBtn" Click="OnLiveMoveUp" ToolTip.Tip="Live層を1段上へ並替">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 2v12M4 6l4-4 4 4" Width="12" Height="12"/>
+                  <TextBlock Text="上へ" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="LiveDownBtn" Click="OnLiveMoveDown" ToolTip.Tip="Live層を1段下へ並替">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 2v12M4 10l4 4 4-4" Width="12" Height="12"/>
+                  <TextBlock Text="下へ" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="QuickShapeBtn" Click="OnQuickShapeTool" ToolTip.Tip="描いて離すと図形に snap (線・矩形・楕円・三角・15°磁石)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 12h12M2 12l3-7 3 7 3-7 3 7" Width="12" Height="12"/>
+                  <TextBlock Text="QuickShape" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="VectorBtn" Click="OnVectorTool" ToolTip.Tip="ベクター線を描く (後から Correct line で制御点・線幅を編集可)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 12C5 12 5 8 8 8s3-5 6-5M2 12h12" Width="12" Height="12"/>
+                  <TextBlock Text="Vector" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="CorrectLineBtn" Click="OnCorrectLine" ToolTip.Tip="選択中のベクター線を後編集 (制御点・線幅・単純化・磁石・結線)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M3 3h3v3H3V3z M11 11h3v3h-3v-3z M6 6l5 5" Width="12" Height="12"/>
+                  <TextBlock Text="Correct line..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="ChannelSaveBtn" Click="OnChannelSave" ToolTip.Tip="現選択を spare channel に保存 (.comp v8で往復)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M2 6h12 M2 10h12" Width="12" Height="12"/>
+                  <TextBlock Text="Channel保存" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="ChannelLoadBtn" Click="OnChannelLoad" ToolTip.Tip="spare channel を選択へ戻す・削除">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M6 2v12 M10 2v12" Width="12" Height="12"/>
+                  <TextBlock Text="Channel..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="TimelapseBtn" Click="OnTimelapse" ToolTip.Tip="描画過程の記録・書出 (連番画像は将来)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4v4l3 2" Width="12" Height="12"/>
+                  <TextBlock Text="Time-lapse..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <CheckBox x:Name="QuickMaskCheck" Content="Quick mask" Checked="OnQuickMaskToggled" Unchecked="OnQuickMaskToggled" ToolTip.Tip="選択の赤 overlay 一時編集 (Brush白で開ける・黒で閉じる)"/>
+              <TextBlock Text="Persona" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="Affinity Persona相当の弱移植: 描く/整える/出すで toolset 切替"/>
+              <ComboBox x:Name="PersonaBox" Width="110" SelectedIndex="0" SelectionChanged="OnPersonaChanged" ToolTip.Tip="描く=Brush・整える=Clone・出す=Crop に切替">
+                <ComboBoxItem>描く</ComboBoxItem>
+                <ComboBoxItem>整える</ComboBoxItem>
+                <ComboBoxItem>出す</ComboBoxItem>
+              </ComboBox>
+              <CheckBox x:Name="SimpleCheck" Content="Simple" Checked="OnSimpleChanged" Unchecked="OnSimpleChanged" ToolTip.Tip="初心者 preset (Brush・白黒・描く) を適用"/>
+            </StackPanel>
             <TextBlock Text="Brush" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Size" VerticalAlignment="Center" Width="56" Classes="dim"/>

@@ -104,3 +104,12 @@ Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42
 - 旧未対応バッジ4（Curves/Levels/GradientMap無効ボタン）は意匠回帰試験互換のため残置。機能入口は新ボタン Curves.../Levels.../Hue.../Filter...（破壊/調整層選択・`/`検索絞込）。GradientMap単独・露出単独シートは残件。
 - 検証証跡: dotnet build Release 0 errors（CS0618旧ダイアログ警告のみ・既存＋新規ASE対話分）。dotnet test Release 全合格（P0WorldBestTests 21件含む・内 headless E2E 1件: Import→Curves破壊→Hue調整層→gap wand→Solo→JPEG/PNG書出の復号確認）。実機GUI目視はWSL headless制約のため後続実機工程に引継ぎ。
 - Apps反映: 利用者許可なく禁止のため未実施。
+
+## P1実装証跡（t_a81fcba0・2026-09-21・WORLD_BEST_PAINT §4 P1）
+- 追加engine: src/Compositor.Avalonia/P1NonDestructive.cs（AdjustmentBrushOps・LiveLayerOps・P1Compose覆面変調・QuickShapeOps・VectorStrokeOps・SpareChannelOps・QuickMaskOps・TimelapseOps・PersonaOps・ContextualHint）。UI配線: P1NonDestructiveUI.cs（新規partial）＋MainWindow.axaml（新規x:Name 15件・既存と操作子名は不変・計114件）＋MainWindow.axaml.cs（Tool.QuickShape/VectorLine・覆面変調合成・QuickMask描画分岐・赤overlay・層行[Live]/[V]標識）。
+- 調整層の覆面対応化: ComposeWithAdjustmentsで覆面つき調整層を調整前後ブレンドに変更（P0以前は全面適用）。Adjustment Brush（黒覆面＋Brush白塗り）・filter mask（白覆面開始）が効く。
+- Live層: 調整種別にNoise/Lens/GaussBlur/MotionBlurを追加（.comp v8）。Live層＝覆面つき調整層で並替・再調整・表示切替可。旧v1-7読込維持・新規保存はv8（ベクター線・spare channel含む）。
+- QuickShape（描いて離すと線/矩形/楕円/三角にsnap・15°磁石・正形拘束engine）・ベクター線（Rasterize焼成＋Vector保持・Correct lineで制御点/線幅/単純化/磁石/結線・同色再焼成）・spare channel（保存/選択へ/削除・v8往復）・Quick mask（Brush白黒描画・赤overlay・選択へ確定）・Time-lapse（操作名＋時刻log・Start/Stop/Export/Clear・session-only）・Simple preset（Brush既定・白黒・描く）・Persona弱移植（描く/整える/出す・toolset切替）・Contextual頭欄（工具毎題＋助言・新工具2種追加）。
+- 不採用項目（生成AI Fill・ML自動切抜・Vision系・MSIX署名）は対象外維持。Time-lapse連番画像・9筆engine分化・mesh/puppet・History保存・macro・HDR/ICC・Export sliceはP2へ。
+- 検証証跡: dotnet build Release 0 errors（CS0618旧ダイアログ警告のみ・既存）。dotnet test Release 全合格（P1NonDestructiveTests 20件含む・内 headless E2E 1件: Import→AdjBrush→Live→QuickShape判定→Vector→channel/QuickMask→Timelapse→PNG/JPEG復号→.comp v8往復）。実機GUI目視はWSL headless制約のため後続実機工程に引継ぎ。
+- Apps反映: 利用者許可なく禁止のため未実施。
