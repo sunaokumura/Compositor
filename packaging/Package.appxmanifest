@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Compositor for Windows — MSIX パッケージマニフェスト草案 (未署名・未検証)。
+  有効なコード署名証明書がないため、MSIXビルド・署名・ストア申請は未実施。
+  証明書入手後に MakeAppx.exe / SignTool.exe でパッケージ化すること。
+  Identity.Name / Publisher は証明書のサブジェクトに合わせて要更新。
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+  <Identity
+    Name="WonderAssembly.CompositorForWindows"
+    Publisher="CN=TODO-証明書サブジェクトに置換"
+    Version="1.0.0.0"
+    ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>Compositor for Windows</DisplayName>
+    <PublisherDisplayName>Wonder Assembly LLC (Windows port)</PublisherDisplayName>
+    <Description>Mac版 Compositor (MIT) のWindows移植版。非破壊レイヤー構成の画像合成エディタ。</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Resources>
+    <Resource Language="ja-JP" />
+    <Resource Language="en-US" />
+  </Resources>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+  <Applications>
+    <Application Id="Compositor" Executable="Compositor.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="Compositor for Windows"
+        Description="Mac版 Compositor (MIT) のWindows移植版"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+</Package>
