@@ -4,7 +4,7 @@
   Compositor for Windows — リリースzip作成スクリプト。
 .DESCRIPTION
   src/publish-win (dotnet publish済み自己完結出力) を
-  LICENSE / README.md と同梱して dist/ に zip 化し、SHA256を出力する。
+  LICENSE / README.md / THIRD-PARTY-NOTICES.md と同梱して dist/ に zip 化し、SHA256を出力する。
   MSIX/コード署名は有効な証明書がないため対象外 (packaging/Package.appxmanifest は草案)。
 .EXAMPLE
   powershell -ExecutionPolicy Bypass -File tools\Make-Release.ps1
@@ -30,6 +30,9 @@ if (-not (Test-Path $PublishDir)) {
 $Exe = Join-Path $PublishDir "Compositor.exe"
 if (-not (Test-Path $Exe)) { Write-Host "[Make-Release] Compositor.exe が publish-win にありません。"; exit 1 }
 
+$Notices = Join-Path $RepoRoot "THIRD-PARTY-NOTICES.md"
+if (-not (Test-Path $Notices)) { Write-Host "[Make-Release] THIRD-PARTY-NOTICES.md が repo 直下にありません。"; exit 1 }
+
 New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 $Stage = Join-Path $DistDir "stage_Compositor-Windows_$Version"
 if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
@@ -38,6 +41,7 @@ New-Item -ItemType Directory -Force -Path $Stage | Out-Null
 Copy-Item "$PublishDir\*" -Destination $Stage -Recurse -Force
 Copy-Item (Join-Path $RepoRoot "LICENSE") -Destination (Join-Path $Stage "LICENSE.txt") -Force
 Copy-Item (Join-Path $RepoRoot "README.md") -Destination (Join-Path $Stage "README.md") -Force
+Copy-Item $Notices -Destination (Join-Path $Stage "THIRD-PARTY-NOTICES.md") -Force
 
 $Zip = Join-Path $DistDir "Compositor-Windows-$Version-win-x64.zip"
 if (Test-Path $Zip) { Remove-Item -Force $Zip }

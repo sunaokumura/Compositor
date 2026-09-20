@@ -13,7 +13,7 @@ C# / .NET 8 LTS + Avalonia UI 11 + SkiaSharp。Document層は非破壊レイヤ�
 ## 導入
 1. 配布zip (`Compositor-Windows-<version>-win-x64.zip`) を任意フォルダに展開。
 2. `Compositor.exe` を起動 (インストール作業・管理者権限不要)。
-3. 同梱の `LICENSE.txt` / `README.md` でライセンス・使い方を確認。
+3. 同梱の `LICENSE.txt` / `README.md` / `THIRD-PARTY-NOTICES.md` でライセンス・使い方を確認。
 4. 既定の導入先: `C:\Users\<user>\Apps\Compositor.Windows\` (MVP配置 `...\Apps\Compositor\` とは別フォルダで共存可)。
 
 ```powershell
@@ -33,6 +33,7 @@ powershell -ExecutionPolicy Bypass -File tools\Make-Release.ps1 -Version v1.1.0-
 - 上流: Mac版 Compositor（MIT License, Copyright (c) 2026 Wonder Assembly LLC）
 - 本リポジトリの LICENSE は上流MITをそのまま継承 (改変なし)。
 - 配布zipには `LICENSE.txt` として同梱。アプリ内 About での表示は未実装 (残課題)。
+- 第三者蔵書の許諾表示は [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) を参照（配布zipにも `THIRD-PARTY-NOTICES.md` として同梱）。
 - 命名・構成はMac版と区別するため `Compositor for Windows` / `Compositor.Windows` とする (詳細は [命名・構成](docs/NAMING.md))。
 
 ## 動作確認済み（実機E2E）
@@ -60,7 +61,7 @@ dotnet publish src/Compositor.Avalonia -c Release -r win-x64 --self-contained tr
 - ショートカット: V=Move H=Hand Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+Shift+C=結合コピー Ctrl+S=保存 Ctrl+N/O/E Ctrl+D Del X/D Arrows=nudge。
 
 ## 配布
-- `tools/Make-Release.ps1` で `src/publish-win` 自己完結出力を LICENSE.txt/README.md 同梱でzip化＋SHA256発行 (`dist/`)。
+- `tools/Make-Release.ps1` で `src/publish-win` 自己完結出力を LICENSE.txt/README.md/THIRD-PARTY-NOTICES.md 同梱でzip化＋SHA256発行 (`dist/`)。
 - MSIXは `packaging/Package.appxmanifest` 草案まで (コード署名は有効な証明書が必要なため未実施・保留)。
 - クリーン導入→起動→基本操作の証跡は [docs/INSTALL_VERIFY.md](docs/INSTALL_VERIFY.md)。
 - 公開リリース手順・証跡はタスクカード t_a33fadbd のコメント参照。
