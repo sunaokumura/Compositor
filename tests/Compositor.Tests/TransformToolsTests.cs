@@ -221,6 +221,76 @@ public class TransformToolsTests
         Assert.Equal(plain.Value.bmp.GetPixel(3, 0).Blue, flipped.Value.bmp.GetPixel(0, 0).Blue);
     }
 
+    [Fact]
+    public void Distort_DragBody_MovesAllCorners()
+    {
+        var orig = new[]
+        {
+            new SKPoint(0, 0), new SKPoint(20, 0), new SKPoint(20, 10), new SKPoint(0, 10),
+        };
+        // Grab inside the quad (body move): all four corners shift by the delta.
+        var next = DistortWarp.DragCorners(orig, new SKPoint(10, 5), new SKPoint(16, 9), 0, shift: false, moveBody: true);
+        Assert.NotNull(next);
+        Assert.Equal(new SKPoint(6, 4), next[0]);
+        Assert.Equal(new SKPoint(26, 4), next[1]);
+        Assert.Equal(new SKPoint(26, 14), next[2]);
+        Assert.Equal(new SKPoint(6, 14), next[3]);
+    }
+
+    [Fact]
+    public void Distort_DragBody_Shift_LocksAxis()
+    {
+        var orig = new[]
+        {
+            new SKPoint(0, 0), new SKPoint(20, 0), new SKPoint(20, 10), new SKPoint(0, 10),
+        };
+        var next = DistortWarp.DragCorners(orig, new SKPoint(10, 5), new SKPoint(16, 9), 0, shift: true, moveBody: true);
+        Assert.NotNull(next);
+        Assert.Equal(new SKPoint(6, 0), next[0]);   // y locked
+        Assert.Equal(new SKPoint(26, 10), next[2]);
+    }
+
+    [Fact]
+    public void Distort_Warp_Translated_OriginShifts()
+    {
+        using var src = Solid(8, 8, SKColors.Red);
+        // Whole-quad body move by (+6,+4): commit must burn pixels at the new origin.
+        var corners = new[]
+        {
+            new SKPoint(6, 4), new SKPoint(14, 4), new SKPoint(14, 12), new SKPoint(6, 12),
+        };
+        var warped = DistortWarp.Warp(src, corners, false, false, LayerSampling.Nearest);
+        Assert.NotNull(warped);
+        Assert.Equal(8, warped.Value.bmp.Width);
+        Assert.Equal(8, warped.Value.bmp.Height);
+        Assert.Equal(6, warped.Value.origin.X);
+        Assert.Equal(4, warped.Value.origin.Y);
+        Assert.Equal(255, warped.Value.bmp.GetPixel(4, 4).Red);
+    }
+
+    // ---------- Enter-confirm routing (t_2e336e81: Tunnel/Bubble single truth) ----------
+
+    [Fact]
+    public void EnterConfirm_Distort_Wins()
+    {
+        Assert.Equal(EnterConfirmKind.Distort, ConfirmRouter.Decide(true, true, true));
+        Assert.Equal(EnterConfirmKind.Distort, ConfirmRouter.Decide(true, false, false));
+    }
+
+    [Fact]
+    public void EnterConfirm_Crop_BeatsGradient()
+    {
+        Assert.Equal(EnterConfirmKind.Crop, ConfirmRouter.Decide(false, true, true));
+        Assert.Equal(EnterConfirmKind.Crop, ConfirmRouter.Decide(false, true, false));
+    }
+
+    [Fact]
+    public void EnterConfirm_Gradient_Or_None()
+    {
+        Assert.Equal(EnterConfirmKind.Gradient, ConfirmRouter.Decide(false, false, true));
+        Assert.Equal(EnterConfirmKind.None, ConfirmRouter.Decide(false, false, false));
+    }
+
     // ---------- Crop ----------
 
     [Fact]

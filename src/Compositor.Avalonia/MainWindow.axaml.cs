@@ -143,9 +143,11 @@ public partial class MainWindow : Window
         ContrastSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         SaturSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         BlurSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
-        // Gradient保留中のEnterは工具欄Buttonに横取りされてWindowまで届かない実機不具合の対策:
+        // 保留中Enter確定の実機不具合対策 (t_7827b8c4 Gradient・t_2e336e81 Distort/Crop):
+        // 画布が非フォーカスImageのため工具欄Buttonにフォーカスが残り、Enterは
+        // ButtonのClickとして消費され Window.OnKeyDown (Bubble) まで届かない。
         // Tunnel段階(フォーカス先より先)で確定を受け付ける。TextBox編集中はそちらを優先する。
-        AddHandler(KeyDownEvent, OnGradientConfirmTunnel, RoutingStrategies.Tunnel);
+        AddHandler(KeyDownEvent, OnEnterConfirmTunnel, RoutingStrategies.Tunnel);
         undoStack.Changed += UpdateUndoButtons;
 
         doc.Changed += RefreshAll;
@@ -850,16 +852,25 @@ public partial class MainWindow : Window
         RefreshAll();
     }
 
-    /// <summary>Gradient保留中のEnter確定をTunnel段階で受ける (実機対策)。
+    /// <summary>保留中Enter確定をTunnel段階で受ける (実機対策)。
     /// 工具欄ButtonにフォーカスがあるとEnterはButtonのClickとして消費され、Windowの
-    /// OnKeyDown (Bubble) まで届かず確定できない (=「引張っても描画なし」に見える)。
-    /// Tunnelはフォーカス先より先にWindowへ届くため、ここで確定して横取りを防ぐ。</summary>
-    void OnGradientConfirmTunnel(object s, KeyEventArgs e)
+    /// OnKeyDown (Bubble) まで届かず確定できない (=Distortは「引張っても変形なし」、
+    /// Gradientは「引張っても描画なし」に見える)。Tunnelはフォーカス先より先に
+    /// Windowへ届くため、ここで確定して横取りを防ぐ。優先順位は ConfirmRouter に集約。</summary>
+    void OnEnterConfirmTunnel(object s, KeyEventArgs e)
     {
-        if (gradientDraft == null || e.Key != Key.Enter) return;
+        if (e.Key != Key.Enter) return;
         if (FocusManager?.GetFocusedElement() is TextBox) return;   // 文書名・数値編集中はそちらを優先
-        CommitGradient();
-        e.Handled = true;
+        switch (ConfirmRouter.Decide(
+            currentTool == Tool.Distort && distortCorners != null,
+            currentTool == Tool.Crop && cropRect != null,
+            gradientDraft != null))
+        {
+            case EnterConfirmKind.Distort: ApplyDistort(); e.Handled = true; break;
+            case EnterConfirmKind.Crop: ApplyCrop(); e.Handled = true; break;
+            case EnterConfirmKind.Gradient: CommitGradient(); e.Handled = true; break;
+            default: break;   // floating/投繩は従来通り Bubble に任せる
+        }
     }
 
     /// <summary>Shift=加算・Option/Alt=減算、なければ工具栏Mode (Mac selectionMode相当).</summary>
@@ -1468,11 +1479,19 @@ public partial class MainWindow : Window
             case Key.G when mods == KeyModifiers.None: SetTool(Tool.Gradient); e.Handled = true; break;
             case Key.Space: cropSpaceHeld = true; e.Handled = true; break;
             case Key.Enter:
-                if (currentTool == Tool.Distort && distortCorners != null) ApplyDistort();
-                else if (currentTool == Tool.Crop && cropRect != null) ApplyCrop();
-                else if (gradientDraft != null) CommitGradient();
-                else if (floating != null) CommitFloating();
-                else ConfirmDrafts();
+                switch (ConfirmRouter.Decide(
+                    currentTool == Tool.Distort && distortCorners != null,
+                    currentTool == Tool.Crop && cropRect != null,
+                    gradientDraft != null))
+                {
+                    case EnterConfirmKind.Distort: ApplyDistort(); break;
+                    case EnterConfirmKind.Crop: ApplyCrop(); break;
+                    case EnterConfirmKind.Gradient: CommitGradient(); break;
+                    default:
+                        if (floating != null) CommitFloating();
+                        else ConfirmDrafts();
+                        break;
+                }
                 e.Handled = true; break;
             case Key.Escape:
                 if (currentTool == Tool.Distort && distortCorners != null) CancelDistort();

@@ -303,6 +303,23 @@ public static class DistortWarp
     }
 }
 
+/// <summary>Enter-confirm routing (which pending draft Enter commits).
+/// Single source of truth for both the Tunnel handler (real-machine focus-steal
+/// countermeasure) and Window.OnKeyDown (Bubble). Priority mirrors OnKeyDown:
+/// Distort &gt; Crop &gt; Gradient; floating/selection drafts stay on Bubble.</summary>
+public enum EnterConfirmKind { None, Distort, Crop, Gradient }
+
+public static class ConfirmRouter
+{
+    public static EnterConfirmKind Decide(bool distortActive, bool cropActive, bool gradientActive)
+    {
+        if (distortActive) return EnterConfirmKind.Distort;
+        if (cropActive) return EnterConfirmKind.Crop;
+        if (gradientActive) return EnterConfirmKind.Gradient;
+        return EnterConfirmKind.None;
+    }
+}
+
 /// <summary>Crop geometry (Mac CropGeometry port: whole-pixel snapped frames).</summary>
 public static class CropGeometry
 {
