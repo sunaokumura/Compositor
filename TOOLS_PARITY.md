@@ -1,15 +1,15 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_e5d70ed9時点）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_f04eebff時点）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
 ## ブラシ系
 | Mac | Windows | 状態 |
 |---|---|---|
-| BrushStroke.swift（ブラシ/消しゴム/スポット修復） | Document.PaintStroke（丸ダブ・不透明度・消しゴムClear）＋Brush/Eraserツール | △（硬さ・間隔ダイナミクス・ヒーリングなし） |
+| BrushStroke.swift（ブラシ/消しゴム/スポット修復） | PaintEngine.PaintBrushStroke（柔らか円ダブ・硬さ・間隔・不透明度・消しゴムClear）＋Brush/Eraserツール・HealTools.SpotHeal（3モード近似） | △（GPUタイル/曲線補間なし・ヒーリングは内容認識近似） |
 | EditorSession+Brush.swift | MainWindow brush stroke handling（stroke単位Undo） | △ |
-| CloneStamp.swift | — | ×（CloneStamp (未対応)バッジ） |
-| SmudgeLiquify.scss → SmudgeLiquify.swift | — | ×（Smudge (未対応)バッジ） |
-| BlurTool.swift（ぼかしツール） | Layer.Blur（非破壊ガウスぼかしスライダー） | △（ブラシベースの部分ぼかしはなし） |
+| CloneStamp.swift | CloneTools（Alt-click採取点・aligned・sampleAllLayers・stroke単位Undo・採取点×印＋硬さ表示）＋Cloneツール(S) | ○（回転層の採取写像は対象外） |
+| SmudgeLiquify.scss → SmudgeLiquify.swift | SmudgeStroke（Smudge/Blur/Liquify＋strength・硬さ・間隔）＋Smudgeツール(R・モード切替） | ○（マスク上操作は対象外） |
+| BlurTool.swift（ぼかしツール） | Layer.Blur（非破壊ガウスぼかしスライダー）＋Smudge/Blurモードのブラシベース部分ぼかし | ○ |
 
 ## 選択系
 | Mac | Windows | 状態 |
@@ -59,10 +59,10 @@
 | LayerMask.swift / LiveLayerMask.swift | — | × |
 | LayerAppearance.swift（不透明度/表示） | Opacity/Visible/Blend16種 | ○ |
 | DocumentHistory.swift | UndoStack（上限100・ドラッグ/ストローク/スライダー単位・COW対応） | ○（選択は履歴対象外＝Photoshop同様） |
-| ColorPalette.swift | BrushColorBox（6色プリセット） | △ |
+| ColorPalette.swift | BrushColorBox（6色プリセット＋スポイト採取Picked枠）・Eyedropperツール(I・All Layers切替・Alt-click採取） | △（パレット編集・マスク塗り分けなし） |
 | ProjectWorkspace.swift / EditorSession+Projects.swift / EditorSession.swift | ドキュメントタブ（複数Doc切替・タブ毎Undo） | △（プロジェクト保存なし） |
 
 ## 集計
-- ○ 5件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / （部分含め実用中核）
-- △ 17件： ブラシ・選択（矩形/楕円/投繩/多角/Wand/画素移動）・変形・調整・ぼかし・タブ等が実用サブセットで動作
-- × 19件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（CloneStamp/Heal/Smudge/ContentFill/SubjectRemoval/Distort/Curves/Levels/GradientMap等。Lasso/MagicWandはt_548a86a5で対応済みのためバッジ解除）
+- ○ 8件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / （部分含め実用中核）
+- △ 16件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・変形・調整・タブ等が実用サブセットで動作
+- × 17件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（ContentFill/SubjectRemoval/Distort/Curves/Levels/GradientMap等。CloneStamp/Heal/Smudge/Lasso/MagicWandは対応済みのためバッジ解除）

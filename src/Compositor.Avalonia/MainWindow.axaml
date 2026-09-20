@@ -43,13 +43,14 @@
             <Button x:Name="HandBtn" Content="H" Width="36" Height="36" Click="OnToolHand" ToolTip.Tip="Hand (H)"/>
             <Button x:Name="BrushBtn" Content="B" Width="36" Height="36" Click="OnToolBrush" ToolTip.Tip="B: レイヤーに直接描画"/>
             <Button x:Name="EraserBtn" Content="E" Width="36" Height="36" Click="OnToolEraser" ToolTip.Tip="E: 透明で消去"/>
-            <Button x:Name="MarqueeBtn" Content="S" Width="36" Height="36" Click="OnToolMarquee" ToolTip.Tip="M: 矩形/楕円選択 (Mで切替・Ctrl+Dで解除)"/>
+            <Button x:Name="MarqueeBtn" Content="M" Width="36" Height="36" Click="OnToolMarquee" ToolTip.Tip="M: 矩形/楕円選択 (Mで切替・Ctrl+Dで解除)"/>
             <Separator Width="36"/>
             <Button x:Name="LassoBtn" Content="L" Width="36" Height="28" Click="OnToolLasso" ToolTip.Tip="L: 投げ縄選択 (自由/多角切替・Enter確定・Esc取消)"/>
             <Button x:Name="WandBtn" Content="W" Width="36" Height="28" Click="OnToolWand" ToolTip.Tip="W: 自動選択 (Tolerance・Contiguous)"/>
-            <Button Content="C" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のクローンスタンプ。Windows版では未対応です。"/>
-            <Button Content="R" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のスポット修復。Windows版では未対応です。"/>
-            <Button Content="G" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のにじみ。Windows版では未対応です。"/>
+            <Button x:Name="CloneBtn" Content="S" Width="36" Height="28" Click="OnToolClone" ToolTip.Tip="S: クローンスタンプ (Alt-clickで採取点)"/>
+            <Button x:Name="HealBtn" Content="J" Width="36" Height="28" Click="OnToolHeal" ToolTip.Tip="J: スポット修復 (採取不要)"/>
+            <Button x:Name="SmudgeBtn" Content="R" Width="36" Height="28" Click="OnToolSmudge" ToolTip.Tip="R: にじみ・ぼかし・画素押出し (Strength対応)"/>
+            <Button x:Name="EyedropperBtn" Content="I" Width="36" Height="28" Click="OnToolEyedropper" ToolTip.Tip="I: スポイト (Alt-clickでも採取可)"/>
             <Button Content="F" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のコンテンツに応じた塗りつぶし。Windows版では未対応です。"/>
             <Button Content="SR" Width="36" Height="28" FontSize="10" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。"/>
           </StackPanel>
@@ -144,6 +145,43 @@
               <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="120" Value="24"/>
               <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色"/>
             </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Hard" VerticalAlignment="Center" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
+              <Slider x:Name="HardnessSlider" Minimum="0" Maximum="100" Width="120" Value="100" ValueChanged="OnHardnessChanged"/>
+              <TextBlock x:Name="HardnessLabel" VerticalAlignment="Center" Text="100%"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Space" VerticalAlignment="Center" ToolTip.Tip="間隔 径比% (ダブ配置ピッチ)"/>
+              <Slider x:Name="SpacingSlider" Minimum="1" Maximum="200" Width="120" Value="15" ValueChanged="OnSpacingChanged"/>
+              <TextBlock x:Name="SpacingLabel" VerticalAlignment="Center" Text="15%"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Opac" VerticalAlignment="Center" ToolTip.Tip="不透明度 1-100% (Smudge系はStrength・1-0キー対応)"/>
+              <Slider x:Name="BrushOpacitySlider" Minimum="1" Maximum="100" Width="120" Value="100" ValueChanged="OnBrushOpacityChanged"/>
+              <TextBlock x:Name="BrushOpacityLabel" VerticalAlignment="Center" Text="100%"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <CheckBox x:Name="CloneAlignedCheck" Content="Aligned" IsChecked="True" Checked="OnCloneAlignedChanged" Unchecked="OnCloneAlignedChanged" ToolTip.Tip="採取源がブラシと一緒に移動 (OFF=毎ストローク採取点から)"/>
+              <ComboBox x:Name="CloneSampleBox" Width="110" SelectedIndex="0" SelectionChanged="OnCloneSampleChanged" ToolTip.Tip="This Layer=選択層のみ・All Layers=可視合成から採取">
+                <ComboBoxItem>This Layer</ComboBoxItem>
+                <ComboBoxItem>All Layers</ComboBoxItem>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ComboBox x:Name="SmudgeModeBox" Width="110" SelectedIndex="0" SelectionChanged="OnSmudgeModeChanged" ToolTip.Tip="Smudge=にじみ・Blur=ぼかし・Liquify=画素押出し">
+                <ComboBoxItem>Smudge</ComboBoxItem>
+                <ComboBoxItem>Blur</ComboBoxItem>
+                <ComboBoxItem>Liquify</ComboBoxItem>
+              </ComboBox>
+              <ComboBox x:Name="HealModeBox" Width="140" SelectedIndex="0" SelectionChanged="OnHealModeChanged" ToolTip.Tip="Content-Aware近似・Create Texture=粒状付加・Proximity=近傍優先">
+                <ComboBoxItem>Content-Aware</ComboBoxItem>
+                <ComboBoxItem>Create Texture</ComboBoxItem>
+                <ComboBoxItem>Proximity</ComboBoxItem>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <CheckBox x:Name="EyedropAllCheck" Content="Eyedrop All Layers" IsChecked="True" ToolTip.Tip="ON=可視合成から採取・OFF=選択層のみ"/>
+            </StackPanel>
             <TextBlock Text="Selection" FontWeight="SemiBold" FontSize="12"/>
             <WrapPanel Orientation="Horizontal">
               <Button x:Name="MarqueeShapeBtn" Content="Rect" Click="OnToggleMarqueeShape" ToolTip.Tip="M: 矩形/楕円切替 (Shift=正方形・Alt=中心)"/>
@@ -167,7 +205,7 @@
               <Button Content="Delete Sel" Click="OnDeleteSelection" ToolTip.Tip="Del: 選択範囲の画素を消去"/>
             </WrapPanel>
             <TextBlock Text="M=Rect/Ellipse L=Lasso/Poly W=Wand Enter=確定 Esc=取消 Move内Drag=枠移動 Ctrl+Drag=画素移動 Alt+Drag=複写" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
-            <TextBlock Text="B=Brush E=Eraser M=Marquee V=Move H=Hand [=size Ctrl+Z/Y Ctrl+C/V Ctrl+N/O/E Ctrl+D Del Arrows=nudge" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
+            <TextBlock Text="B=Brush E=Eraser S=Clone J=Heal R=Smudge I=Eyedrop M=Marquee V=Move H=Hand [=size Shift+[=hard 1-0=opac Ctrl+Z/Y Ctrl+C/V Ctrl+N/O/E Ctrl+D Del Arrows=nudge" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
             <Button x:Name="SubjectRemovalBtn" Content="Subject Removal (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です." Height="0" Width="0" Opacity="0"/>
           </StackPanel>
         </ScrollViewer>

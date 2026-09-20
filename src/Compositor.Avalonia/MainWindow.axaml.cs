@@ -27,9 +27,31 @@ public partial class MainWindow : Window
     readonly List<Document> openDocs = new();
     bool updatingTabs;
 
-    enum Tool { Move, Hand, Brush, Eraser, Marquee, Lasso, Polygon, Wand }
+    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand }
     Tool currentTool = Tool.Move;
     List<SKPoint> strokePoints;       // active brush stroke (layer-pixel space)
+    // --- paint settings (Mac BrushSettings subset) ---
+    float brushHardness = 1f;         // 0..1 (柔らか円ダブ)
+    float brushSpacing = 0.15f;       // 径比 (間隔配置)
+    float brushOpacity = 1f;          // 0.01..1 (Smudge系ではstrength)
+    // --- Clone Stamp state (Mac CloneStamp.swift: doc-px source/offset) ---
+    SKPoint? cloneSource;             // Alt-click採取点 (doc px)
+    SKSize? cloneOffset;              // aligned初回ストロークの whole-pixel オフセット
+    bool cloneAligned = true;
+    bool cloneSampleAll;
+    SKBitmap cloneSampleBmp;          // stroke開始時スナップショット
+    List<SKPoint> strokeDocPoints;    // active paint stroke (document-px, Clone/Heal/Smudge用)
+    int drawnDabs;                    // Brush増分描画済みダブ数 (spacing連続性用)
+    // --- Smudge/Blur/Liquify state (Mac WarpStroke subset) ---
+    string smudgeMode = "Smudge";     // Smudge / Blur / Liquify
+    SmudgeStroke activeSmudge;
+    SKBitmap blurSampleBmp;
+    SKPoint? smudgeLastDoc;
+    int healMode;                     // 0 Content-Aware / 1 Create Texture / 2 Proximity
+    SKColor pickedColor = SKColors.Black;
+    bool hasPickedColor;
+    SKPoint hoverDoc;                 // brush環表示用ホバー位置 (doc px)
+    bool hasHover;
     SKPoint marqueeStart;             // marquee anchor (document px)
     bool marqueeActive;
     bool marqueeSquare, marqueeFromCenter;   // Shift / Option held at drag start
@@ -48,7 +70,7 @@ public partial class MainWindow : Window
     SKPoint frameDragLast;            // 枠移動の前回doc位置
     SKPoint lastCopyOrigin = new(0, 0);   // 選択コピーの貼付位置
 
-    static readonly (string Name, SKColor Color)[] BrushColors = new[]
+    static readonly List<(string Name, SKColor Color)> BrushColors = new()
     {
         ("Black", SKColors.Black), ("White", SKColors.White), ("Red", SKColors.Red),
         ("Green", SKColors.Green), ("Blue", SKColors.Blue), ("Yellow", SKColors.Yellow),
@@ -222,6 +244,7 @@ public partial class MainWindow : Window
             DrawSelectionOverlay(canvas);
             DrawDraftOverlay(canvas);
             DrawFloatingPreview(canvas);
+            DrawBrushOverlay(canvas);
             surface.Flush();
         }
         renderedBitmap?.Dispose();
@@ -344,6 +367,55 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>ブラシ環表示 (Mac BrushCursorOverlay相当): 外環=径・内破線=硬さ・×=Clone採取点.</summary>
+    void DrawBrushOverlay(SKCanvas canvas)
+    {
+        if (!hasHover) return;
+        if (currentTool is not (Tool.Brush or Tool.Eraser or Tool.Clone or Tool.Heal or Tool.Smudge)) return;
+        if (strokePoints != null) return;   // ストローク中は環を出さない
+        float d = BrushDiameter() * zoom;
+        if (d < 2) return;
+        float cx = hoverDoc.X * zoom, cy = hoverDoc.Y * zoom;
+        using var outerW = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true };
+        using var outerB = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
+        canvas.DrawCircle(cx, cy, d / 2, outerW);
+        canvas.DrawCircle(cx, cy, d / 2, outerB);
+        if (brushHardness > 0.01f && brushHardness < 0.99f)
+        {
+            float inner = d / 2 * brushHardness;
+            using var dashW = new SKPaint
+            {
+                Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true,
+                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 3 }, 0),
+            };
+            using var dashB = new SKPaint
+            {
+                Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true,
+                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 3 }, 0),
+            };
+            canvas.DrawCircle(cx, cy, inner, dashW);
+            canvas.DrawCircle(cx, cy, inner, dashB);
+        }
+        if (currentTool == Tool.Clone)
+        {
+            var sample = cloneSource != null
+                ? CloneTools.SamplePoint(hoverDoc, cloneSource, cloneAligned ? cloneOffset : null, cloneAligned, strokeActive: false)
+                : null;
+            if (sample != null)
+            {
+                float sx = sample.Value.X * zoom, sy = sample.Value.Y * zoom;
+                const float reach = 7f;
+                using var cross = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Stroke, StrokeWidth = 2, IsAntialias = true };
+                using var crossB = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 1, IsAntialias = true };
+                foreach (var p in new[] { cross, crossB })
+                {
+                    canvas.DrawLine(sx - reach, sy, sx + reach, sy, p);
+                    canvas.DrawLine(sx, sy - reach, sx, sy + reach, p);
+                }
+            }
+        }
+    }
+
     /// <summary>画素移動中のゴースト表示 (切出し画素を移動先に半透明で).</summary>
     void DrawFloatingPreview(SKCanvas canvas)
     {
@@ -364,12 +436,22 @@ public partial class MainWindow : Window
         currentTool = t;
         marqueeActive = false;
         strokePoints = null;
+        strokeDocPoints = null;
+        drawnDabs = 0;
+        activeSmudge = null;
+        smudgeLastDoc = null;
         var (title, hint) = t switch
         {
             Tool.Move => ("Transform", "選択内Drag=枠移動 · Ctrl+Drag=画素移動 · Alt+Drag=複写"),
             Tool.Hand => ("Pan", "Drag to pan · +/- zoom"),
-            Tool.Brush => ("Brush", "Drag to paint · [ ] size"),
-            Tool.Eraser => ("Eraser", "Drag to erase · [ ] size"),
+            Tool.Brush => ("Brush", $"Drag to paint · [ ] size · 1-0 opacity · Alt-click=採取 · Ø{BrushDiameter():F0} H{brushHardness:P0}"),
+            Tool.Eraser => ("Eraser", $"Drag to erase · [ ] size · Ø{BrushDiameter():F0} H{brushHardness:P0}"),
+            Tool.Clone => ("Clone Stamp", cloneSource == null
+                ? "Alt-clickで採取点を設定 (採取後にDragで複写 · Aligned/All-Layers設定)"
+                : $"Dragで複写 · Alt-clickで採取点再設定 · Ø{BrushDiameter():F0}"),
+            Tool.Heal => ("Spot Healing", "Click/Dragで修復 (採取不要 · モード選択可)"),
+            Tool.Smudge => (smudgeMode, $"Dragで{smudgeMode} · Strength=Opacity · [ ] size · Ø{BrushDiameter():F0}"),
+            Tool.Eyedropper => ("Eyedropper", "Clickで色採取 (All Layers=合成から)"),
             Tool.Marquee => (marqueeShape == SelectionKind.Ellipse ? "Marquee (Ellipse)" : "Marquee",
                 "Dragで選択 · Shift=正方形 · Alt=中心 · M=楕円切替 · Ctrl+D解除"),
             Tool.Lasso => ("Lasso (Freehand)", "Dragで投繩 · Enter/ダブルクリック確定 · Esc取消 · L=多角切替"),
@@ -395,6 +477,83 @@ public partial class MainWindow : Window
         if (MarqueeBtn != null) MarqueeBtn.Background = currentTool == Tool.Marquee ? on : off;
         if (LassoBtn != null) LassoBtn.Background = (currentTool == Tool.Lasso || currentTool == Tool.Polygon) ? on : off;
         if (WandBtn != null) WandBtn.Background = currentTool == Tool.Wand ? on : off;
+        if (CloneBtn != null) CloneBtn.Background = currentTool == Tool.Clone ? on : off;
+        if (HealBtn != null) HealBtn.Background = currentTool == Tool.Heal ? on : off;
+        if (SmudgeBtn != null) SmudgeBtn.Background = currentTool == Tool.Smudge ? on : off;
+        if (EyedropperBtn != null) EyedropperBtn.Background = currentTool == Tool.Eyedropper ? on : off;
+    }
+
+    float BrushDiameter() => (float)(BrushSizeSlider?.Value ?? 24);
+
+    BrushSettings CurrentBrushSettings() => new(BrushDiameter(), brushHardness, brushSpacing, brushOpacity);
+
+    void RefreshToolHeader() => SetTool(currentTool);
+
+    bool IsPaintTool() => currentTool is Tool.Brush or Tool.Eraser or Tool.Clone or Tool.Heal or Tool.Smudge;
+
+    void SetPaintOpacity(float v)
+    {
+        if (strokePoints != null) return;   // ストローク中は変更しない (Mac同様)
+        brushOpacity = Math.Clamp(v, 0.01f, 1f);
+        SyncBrushPanel();
+        RefreshToolHeader();
+        Log($"Brush opacity={brushOpacity:P0}");
+    }
+
+    /// <summary>BrushパネルUIをフィールド値へ同期 (キー操作からの反映用).</summary>
+    void SyncBrushPanel()
+    {
+        if (HardnessSlider != null) HardnessSlider.Value = brushHardness * 100;
+        if (HardnessLabel != null) HardnessLabel.Text = $"{brushHardness:P0}";
+        if (SpacingSlider != null) SpacingSlider.Value = brushSpacing * 100;
+        if (SpacingLabel != null) SpacingLabel.Text = $"{brushSpacing:P0}";
+        if (BrushOpacitySlider != null) BrushOpacitySlider.Value = brushOpacity * 100;
+        if (BrushOpacityLabel != null) BrushOpacityLabel.Text = $"{brushOpacity:P0}";
+    }
+
+    void OnHardnessChanged(object s, RoutedEventArgs e)
+    {
+        if (!uiReady || HardnessSlider == null) return;
+        brushHardness = (float)(HardnessSlider.Value / 100);
+        if (HardnessLabel != null) HardnessLabel.Text = $"{brushHardness:P0}";
+        RefreshToolHeader();
+    }
+
+    void OnSpacingChanged(object s, RoutedEventArgs e)
+    {
+        if (!uiReady || SpacingSlider == null) return;
+        brushSpacing = (float)(SpacingSlider.Value / 100);
+        if (SpacingLabel != null) SpacingLabel.Text = $"{brushSpacing:P0}";
+    }
+
+    void OnBrushOpacityChanged(object s, RoutedEventArgs e)
+    {
+        if (!uiReady || BrushOpacitySlider == null) return;
+        brushOpacity = Math.Clamp((float)(BrushOpacitySlider.Value / 100), 0.01f, 1f);
+        if (BrushOpacityLabel != null) BrushOpacityLabel.Text = $"{brushOpacity:P0}";
+        RefreshToolHeader();
+    }
+
+    void OnCloneAlignedChanged(object s, RoutedEventArgs e)
+    {
+        cloneAligned = CloneAlignedCheck?.IsChecked == true;
+    }
+
+    void OnCloneSampleChanged(object s, RoutedEventArgs e)
+    {
+        cloneSampleAll = (CloneSampleBox?.SelectedIndex ?? 0) == 1;
+    }
+
+    void OnSmudgeModeChanged(object s, RoutedEventArgs e)
+    {
+        int i = SmudgeModeBox?.SelectedIndex ?? 0;
+        smudgeMode = i == 1 ? "Blur" : i == 2 ? "Liquify" : "Smudge";
+        RefreshToolHeader();
+    }
+
+    void OnHealModeChanged(object s, RoutedEventArgs e)
+    {
+        healMode = HealModeBox?.SelectedIndex ?? 0;
     }
 
     void OnToolMove(object s, RoutedEventArgs e) => SetTool(Tool.Move);
@@ -404,6 +563,10 @@ public partial class MainWindow : Window
     void OnToolMarquee(object s, RoutedEventArgs e) => SetTool(Tool.Marquee);
     void OnToolLasso(object s, RoutedEventArgs e) => SetTool(lassoKind == SelectionKind.Polygon ? Tool.Polygon : Tool.Lasso);
     void OnToolWand(object s, RoutedEventArgs e) => SetTool(Tool.Wand);
+    void OnToolClone(object s, RoutedEventArgs e) => SetTool(Tool.Clone);
+    void OnToolHeal(object s, RoutedEventArgs e) => SetTool(Tool.Heal);
+    void OnToolSmudge(object s, RoutedEventArgs e) => SetTool(Tool.Smudge);
+    void OnToolEyedropper(object s, RoutedEventArgs e) => SetTool(Tool.Eyedropper);
 
     /// <summary>Shift=加算・Option/Alt=減算、なければ工具栏Mode (Mac selectionMode相当).</summary>
     SelectionMode EffectiveSelMode(KeyModifiers mods)
@@ -982,6 +1145,10 @@ public partial class MainWindow : Window
         {
             case Key.B when mods == KeyModifiers.None: SetTool(Tool.Brush); e.Handled = true; break;
             case Key.E when mods == KeyModifiers.None: SetTool(Tool.Eraser); e.Handled = true; break;
+            case Key.S when mods == KeyModifiers.None: SetTool(Tool.Clone); e.Handled = true; break;
+            case Key.J when mods == KeyModifiers.None: SetTool(Tool.Heal); e.Handled = true; break;
+            case Key.R when mods == KeyModifiers.None: SetTool(Tool.Smudge); e.Handled = true; break;
+            case Key.I when mods == KeyModifiers.None: SetTool(Tool.Eyedropper); e.Handled = true; break;
             case Key.M when mods == KeyModifiers.None:
                 if (currentTool == Tool.Marquee) OnToggleMarqueeShape(null, null);   // Mで矩形/楕円切替
                 else SetTool(Tool.Marquee);
@@ -1007,14 +1174,36 @@ public partial class MainWindow : Window
                 e.Handled = true; break;
             case Key.OemOpenBrackets when mods == KeyModifiers.None:
                 BrushSizeSlider.Value = Math.Max(BrushSizeSlider.Minimum, BrushSizeSlider.Value - 4);
+                RefreshToolHeader();
                 e.Handled = true; break;
             case Key.OemCloseBrackets when mods == KeyModifiers.None:
                 BrushSizeSlider.Value = Math.Min(BrushSizeSlider.Maximum, BrushSizeSlider.Value + 4);
+                RefreshToolHeader();
+                e.Handled = true; break;
+            // Shift-[ / ]: 硬さ 25%刻み (Mac changeBrushHardness相当)
+            case Key.OemOpenBrackets when mods.HasFlag(KeyModifiers.Shift):
+                brushHardness = Math.Clamp(MathF.Floor(brushHardness * 4 - 0.001f) / 4, 0f, 1f);
+                SyncBrushPanel(); RefreshToolHeader(); RenderCanvas();
+                e.Handled = true; break;
+            case Key.OemCloseBrackets when mods.HasFlag(KeyModifiers.Shift):
+                brushHardness = Math.Clamp(MathF.Ceiling(brushHardness * 4 + 0.001f) / 4, 0f, 1f);
+                SyncBrushPanel(); RefreshToolHeader(); RenderCanvas();
                 e.Handled = true; break;
             case Key.D when mods.HasFlag(KeyModifiers.Control):
                 lassoDraft = null; polygonDraft = null; hasPolygonCursor = false;
                 if (floating != null) CommitFloating();
                 doc.ClearSelection(); RenderCanvas(); Log("Deselect"); e.Handled = true; break;
+            // 不透明度キー 1=10% … 9=90% · 0=100% (Mac typeOpacityDigit相当・描画系工具のみ)
+            case Key.D1 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.1f); e.Handled = true; break;
+            case Key.D2 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.2f); e.Handled = true; break;
+            case Key.D3 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.3f); e.Handled = true; break;
+            case Key.D4 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.4f); e.Handled = true; break;
+            case Key.D5 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.5f); e.Handled = true; break;
+            case Key.D6 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.6f); e.Handled = true; break;
+            case Key.D7 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.7f); e.Handled = true; break;
+            case Key.D8 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.8f); e.Handled = true; break;
+            case Key.D9 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(0.9f); e.Handled = true; break;
+            case Key.D0 when mods == KeyModifiers.None && IsPaintTool(): SetPaintOpacity(1f); e.Handled = true; break;
             case Key.Left when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
             case Key.Right when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
             case Key.Up when mods == KeyModifiers.None || mods == KeyModifiers.Shift:
@@ -1071,13 +1260,53 @@ public partial class MainWindow : Window
     SKColor BrushPaintColor()
     {
         int i = BrushColorBox?.SelectedIndex ?? 0;
-        if (i >= 0 && i < BrushColors.Length) return BrushColors[i].Color;
+        if (hasPickedColor && i == BrushColors.Count - 1) return pickedColor;
+        if (i >= 0 && i < BrushColors.Count) return BrushColors[i].Color;
         return SKColors.Black;
+    }
+
+    void PickColor(SKColor c)
+    {
+        pickedColor = new SKColor(c.Red, c.Green, c.Blue, 255);
+        if (!hasPickedColor)
+        {
+            hasPickedColor = true;
+            BrushColors.Add(("Picked", pickedColor));
+            BrushColorBox.Items.Add("Picked");
+        }
+        else
+        {
+            BrushColors[BrushColors.Count - 1] = ("Picked", pickedColor);
+        }
+        BrushColorBox.SelectedIndex = BrushColors.Count - 1;
+        Log($"Eyedropper picked #{pickedColor.Red:X2}{pickedColor.Green:X2}{pickedColor.Blue:X2}");
     }
 
     SKPoint ToLayerPixel(Layer l, SKPoint docPoint) =>
         new((docPoint.X - l.Position.X) / Math.Max(1e-6f, l.Scale),
             (docPoint.Y - l.Position.Y) / Math.Max(1e-6f, l.Scale));
+
+    SKPoint ToDocPixel(Layer l, SKPoint layerPoint) =>
+        new(layerPoint.X * l.Scale + l.Position.X,
+            layerPoint.Y * l.Scale + l.Position.Y);
+
+    void DoEyedropper(SKPoint docPoint)
+    {
+        var layer = Selected;
+        if (layer == null || layer.Bitmap == null)
+        {
+            for (int i = doc.Layers.Count - 1; i >= 0; i--)
+            {
+                var l = doc.Layers[i];
+                if (l.Visible && l.Bitmap != null && l.HitTest(docPoint)) { layer = l; break; }
+            }
+        }
+        if (layer == null) return;
+        bool all = EyedropAllCheck?.IsChecked == true;
+        var c = Eyedropper.Sample(doc, layer, docPoint, all);
+        PickColor(c);
+        RenderCanvas();
+    }
 
     /// <summary>Marquee selection (document px) converted to layer-pixel space for clip.</summary>
     SKRect? SelectionLayerRect(Layer l)
@@ -1188,6 +1417,30 @@ public partial class MainWindow : Window
             DoWand(docPoint, mods);
             return;
         }
+        if (currentTool == Tool.Eyedropper)
+        {
+            DoEyedropper(docPoint);
+            return;
+        }
+        // Alt-click採取: Brush/Eraser/Clone/Smudge/Heal のいずれからも色を拾う (Photoshop相当)
+        if (mods.HasFlag(KeyModifiers.Alt) && currentTool is Tool.Brush or Tool.Eraser or Tool.Smudge or Tool.Heal)
+        {
+            DoEyedropper(docPoint);
+            return;
+        }
+        if (currentTool == Tool.Clone && mods.HasFlag(KeyModifiers.Alt))
+        {
+            // CloneはAlt-clickで採取点 (色採取より採取点が優先)
+            if (docPoint.X >= 0 && docPoint.Y >= 0 && docPoint.X < doc.Width && docPoint.Y < doc.Height)
+            {
+                cloneSource = new SKPoint(MathF.Round(docPoint.X), MathF.Round(docPoint.Y));
+                cloneOffset = null;
+                Log($"Clone source=({cloneSource.Value.X},{cloneSource.Value.Y})");
+                RefreshToolHeader();
+                RenderCanvas();
+            }
+            return;
+        }
         if (currentTool == Tool.Brush || currentTool == Tool.Eraser)
         {
             for (int i = doc.Layers.Count - 1; i >= 0; i--)
@@ -1195,11 +1448,98 @@ public partial class MainWindow : Window
                 var l = doc.Layers[i];
                 if (!l.Visible || l.Locked || l.Bitmap == null) continue;
                 if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
-                undoStack.Push(doc);   // stroke単位で1エントリ（Moved中は追加pushしない）
+                undoStack.Push(doc);
                 strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
+                strokeDocPoints = new List<SKPoint> { docPoint };
+                drawnDabs = PaintEngine.DabCount(strokePoints, BrushDiameter(), brushSpacing);
                 dragLayer = l;
-                Document.PaintStroke(l, strokePoints, BrushPaintColor(),
-                    (float)(BrushSizeSlider?.Value ?? 24), currentTool == Tool.Eraser, 1f, SelectionLayerRect(l));
+                PaintEngine.PaintBrushStroke(l, strokePoints, BrushPaintColor(),
+                    CurrentBrushSettings(), currentTool == Tool.Eraser, SelectionLayerRect(l));
+                RenderCanvas();
+                RefreshLayerList();
+                break;
+            }
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Clone)
+        {
+            if (cloneSource == null) { Log("Clone: Alt-clickで採取点を先に設定"); return; }
+            for (int i = doc.Layers.Count - 1; i >= 0; i--)
+            {
+                var l = doc.Layers[i];
+                if (!l.Visible || l.Locked || l.Bitmap == null) continue;
+                if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
+                var off = CloneTools.StrokeOffset(docPoint, cloneSource, cloneOffset, cloneAligned);
+                if (off == null) return;
+                undoStack.Push(doc);
+                cloneSampleBmp?.Dispose();
+                cloneSampleBmp = CloneTools.CloneSample(doc, l, cloneSampleAll);
+                if (cloneAligned) cloneOffset = off;
+                strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
+                strokeDocPoints = new List<SKPoint> { docPoint };
+                dragLayer = l;
+                var settings = CurrentBrushSettings();
+                var offDoc = new SKPoint(off.Value.Width, off.Value.Height);
+                var layer = l;
+                CloneTools.PaintCloneStroke(l, cloneSampleBmp, strokeDocPoints, offDoc,
+                    settings, p => ToLayerPixel(layer, p), p => InsideSelection(p));
+                Log($"Clone stroke offset=({off.Value.Width},{off.Value.Height}) allLayers={cloneSampleAll}");
+                RenderCanvas();
+                RefreshLayerList();
+                break;
+            }
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Heal)
+        {
+            for (int i = doc.Layers.Count - 1; i >= 0; i--)
+            {
+                var l = doc.Layers[i];
+                if (!l.Visible || l.Locked || l.Bitmap == null) continue;
+                if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
+                undoStack.Push(doc);
+                strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
+                strokeDocPoints = new List<SKPoint> { docPoint };
+                dragLayer = l;
+                HealTools.SpotHeal(l, strokePoints[0], BrushDiameter(), brushOpacity, healMode,
+                    p => InsideSelection(ToDocPixel(l, p)));
+                RenderCanvas();
+                RefreshLayerList();
+                break;
+            }
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Smudge)
+        {
+            for (int i = doc.Layers.Count - 1; i >= 0; i--)
+            {
+                var l = doc.Layers[i];
+                if (!l.Visible || l.Locked || l.Bitmap == null) continue;
+                if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
+                undoStack.Push(doc);
+                strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
+                strokeDocPoints = new List<SKPoint> { docPoint };
+                dragLayer = l;
+                smudgeLastDoc = docPoint;
+                if (smudgeMode == "Smudge")
+                {
+                    activeSmudge = new SmudgeStroke(BrushDiameter(), brushOpacity, brushHardness);
+                    activeSmudge.PickUp(l.Bitmap, strokePoints[0]);
+                    activeSmudge.SmudgeAt(l.Bitmap, strokePoints[0]);
+                }
+                else if (smudgeMode == "Blur")
+                {
+                    blurSampleBmp?.Dispose();
+                    blurSampleBmp = SmudgeStroke.BlurSampleLayer(l, BrushDiameter());
+                    if (blurSampleBmp != null)
+                        SmudgeStroke.BlurAt(l.Bitmap, blurSampleBmp, strokePoints[0],
+                            BrushDiameter(), brushHardness, brushOpacity);
+                }
+                // Liquifyは移動量が必要なためMoved側で処理 (Pressedでは起点のみ)
+                Log($"Smudge start mode={smudgeMode}");
                 RenderCanvas();
                 RefreshLayerList();
                 break;
@@ -1254,6 +1594,19 @@ public partial class MainWindow : Window
         e.Pointer.Capture((IInputElement)s);
     }
 
+    /// <summary>Paint stroke終了: 状態クリアとstrokeスナップショット破棄 (UndoはPressed時push済み).</summary>
+    void EndPaintStroke()
+    {
+        strokePoints = null;
+        strokeDocPoints = null;
+        dragLayer = null;
+        drawnDabs = 0;
+        activeSmudge = null;
+        smudgeLastDoc = null;
+        cloneSampleBmp?.Dispose(); cloneSampleBmp = null;
+        blurSampleBmp?.Dispose(); blurSampleBmp = null;
+    }
+
     SKPoint CanvasPoint(PointerEventArgs e, Visual visual)
     {
         var p = e.GetPosition(visual);
@@ -1263,6 +1616,18 @@ public partial class MainWindow : Window
     void OnCanvasPointerMoved(object s, PointerEventArgs e)
     {
         var docPoint = CanvasPoint(e, (Control)s);
+        // ブラシ環ホバー追従 (ボタン押下なし・描画系工具のみ)
+        if (strokePoints == null && !marqueeActive && floating == null && !floatingFrameDrag
+            && currentTool is Tool.Brush or Tool.Eraser or Tool.Clone or Tool.Heal or Tool.Smudge)
+        {
+            var props0 = e.GetCurrentPoint((Control)s).Properties;
+            if (!props0.IsLeftButtonPressed && !props0.IsRightButtonPressed)
+            {
+                hoverDoc = docPoint; hasHover = true;
+                RenderCanvas();
+                return;
+            }
+        }
         if (marqueeActive)
         {
             // 選択はUndo履歴に載せない（Photoshop同様、選択自体は履歴対象外）。
@@ -1319,34 +1684,59 @@ public partial class MainWindow : Window
         if (strokePoints != null && dragLayer != null && dragLayer.Bitmap != null)
         {
             var props = e.GetCurrentPoint((Control)s).Properties;
-            if (!props.IsLeftButtonPressed) { strokePoints = null; dragLayer = null; return; }
+            if (!props.IsLeftButtonPressed) { EndPaintStroke(); return; }
             docPoint = CanvasPoint(e, (Control)s);
             if (!InsideSelection(docPoint)) return;
-            var lp = ToLayerPixel(dragLayer, docPoint);
+            var layer = dragLayer;
+            var lp = ToLayerPixel(layer, docPoint);
             strokePoints.Add(lp);
-            // 直近セグメントのみ描画（COW済みのため追加push不要）。選択枠で切り抜き。
-            using (var canvas = new SKCanvas(dragLayer.Bitmap))
+            strokeDocPoints?.Add(docPoint);
+            var settings = CurrentBrushSettings();
+            if (currentTool == Tool.Brush || currentTool == Tool.Eraser)
             {
-                var clip = SelectionLayerRect(dragLayer);
-                bool clipped = clip is SKRect c && c.Width > 0 && c.Height > 0;
-                if (clipped) { canvas.Save(); canvas.ClipRect(clip.Value); }
-                try
+                // 増分ダブのみ描画（COW済みのため追加push不要）。選択枠で切り抜き。
+                using (var canvas = new SKCanvas(layer.Bitmap))
                 {
-            using (var paint = new SKPaint
-            {
-                Color = currentTool == Tool.Eraser ? SKColors.Transparent : BrushPaintColor(),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = (float)(BrushSizeSlider?.Value ?? 24),
-                StrokeCap = SKStrokeCap.Round,
-                StrokeJoin = SKStrokeJoin.Round,
-                IsAntialias = true,
-                BlendMode = currentTool == Tool.Eraser ? SKBlendMode.Clear : SKBlendMode.SrcOver,
-            })
-            {
-                canvas.DrawLine(strokePoints[^2], strokePoints[^1], paint);
-            }
+                    var clip = SelectionLayerRect(layer);
+                    bool clipped = clip is SKRect c && c.Width > 0 && c.Height > 0;
+                    if (clipped) { canvas.Save(); canvas.ClipRect(clip.Value); }
+                    try
+                    {
+                        drawnDabs += PaintEngine.PaintDabs(canvas, strokePoints, BrushPaintColor(),
+                            settings, currentTool == Tool.Eraser, drawnDabs);
+                    }
+                    finally { if (clipped) canvas.Restore(); }
                 }
-                finally { if (clipped) canvas.Restore(); }
+            }
+            else if (currentTool == Tool.Clone && cloneSampleBmp != null && strokeDocPoints != null)
+            {
+                var off = CloneTools.StrokeOffset(docPoint, cloneSource, cloneAligned ? cloneOffset : null, cloneAligned);
+                SKPoint offDoc = off == null ? new SKPoint(0, 0) : new SKPoint(off.Value.Width, off.Value.Height);
+                if (cloneAligned && off != null) cloneOffset = off;
+                var seg = strokeDocPoints.Count >= 2
+                    ? new List<SKPoint> { strokeDocPoints[^2], strokeDocPoints[^1] }
+                    : new List<SKPoint> { docPoint };
+                CloneTools.PaintCloneStroke(layer, cloneSampleBmp, seg, offDoc,
+                    settings, p => ToLayerPixel(layer, p), p => InsideSelection(p));
+            }
+            else if (currentTool == Tool.Heal)
+            {
+                HealTools.SpotHeal(layer, lp, BrushDiameter(), brushOpacity, healMode,
+                    p => InsideSelection(ToDocPixel(layer, p)));
+            }
+            else if (currentTool == Tool.Smudge)
+            {
+                if (smudgeMode == "Smudge" && activeSmudge != null)
+                    activeSmudge.SmudgeAt(layer.Bitmap, lp);
+                else if (smudgeMode == "Blur" && blurSampleBmp != null)
+                    SmudgeStroke.BlurAt(layer.Bitmap, blurSampleBmp, lp,
+                        BrushDiameter(), brushHardness, brushOpacity);
+                else if (smudgeMode == "Liquify" && smudgeLastDoc != null)
+                {
+                    var prev = ToLayerPixel(layer, smudgeLastDoc.Value);
+                    SmudgeStroke.PushAt(layer.Bitmap, prev, lp, BrushDiameter(), brushHardness, brushOpacity);
+                }
+                smudgeLastDoc = docPoint;
             }
             RenderCanvas();
             return;
@@ -1400,8 +1790,7 @@ public partial class MainWindow : Window
             RenderCanvas();
         }
         floatingFrameDrag = false;
-        strokePoints = null;
-        dragLayer = null;
+        EndPaintStroke();
         e.Pointer.Capture(null);
     }
 }
