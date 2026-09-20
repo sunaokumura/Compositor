@@ -137,6 +137,103 @@ public class PaintToolsTests
         Assert.True(l.Bitmap.GetPixel(38, 32).Red < 220);
     }
 
+    // ---- Smudge 回帰 (t_4a68741f: 実機「効果なし」) ----
+
+    static long SmudgeChange(SKBitmap before, SKBitmap after, SKPoint center, float diameter)
+    {
+        float r = diameter / 2f;
+        int ir = (int)System.MathF.Ceiling(r) + 1;
+        int cx = (int)System.MathF.Round(center.X), cy = (int)System.MathF.Round(center.Y);
+        long total = 0;
+        for (int dy = -ir; dy <= ir; dy++)
+            for (int dx = -ir; dx <= ir; dx++)
+            {
+                int x = cx + dx, y = cy + dy;
+                if (x < 0 || y < 0 || x >= before.Width || y >= before.Height) continue;
+                var a = before.GetPixel(x, y); var b = after.GetPixel(x, y);
+                total += System.Math.Abs(a.Red - b.Red) + System.Math.Abs(a.Green - b.Green) + System.Math.Abs(a.Blue - b.Blue);
+            }
+        return total;
+    }
+
+    static Layer SmudgeFixture(out SKPoint dot, out SKPoint target)
+    {
+        // 白地に黒点 (dot) + 白い採取先 (target)。左半分黒ではない: carried が黒 dot 由来と断定できる配置。
+        var l = SolidLayer(64, 64, SKColors.White);
+        dot = new SKPoint(10, 32); target = new SKPoint(30, 32);
+        using (var c = new SKCanvas(l.Bitmap))
+            c.DrawCircle(dot, 6, new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Fill });
+        return l;
+    }
+
+    [Fact]
+    public void Smudge_Strength_MinVsMax()
+    {
+        // 強度 (Strength=Opacity) が沈着量に効くこと。旧実装は w のみで strength を無視し、min と max が同一結果だった。
+        var lMax = SmudgeFixture(out var dot, out var target);
+        var lMin = SmudgeFixture(out _, out _);
+        using var beforeMax = lMax.Bitmap.Copy(); using var beforeMin = lMin.Bitmap.Copy();
+        var sMax = new SmudgeStroke(diameter: 11, strength: 1f, hardness: 1f);
+        var sMin = new SmudgeStroke(diameter: 11, strength: 0f, hardness: 1f);  // ctor 下限 0.01 に丸め
+        sMax.PickUp(lMax.Bitmap, dot); sMin.PickUp(lMin.Bitmap, dot);
+        sMax.SmudgeAt(lMax.Bitmap, target); sMin.SmudgeAt(lMin.Bitmap, target);
+        long maxTotal = SmudgeChange(beforeMax, lMax.Bitmap, target, 11);
+        long minTotal = SmudgeChange(beforeMin, lMin.Bitmap, target, 11);
+        Assert.True(maxTotal > 0);              // max は確実に塗る
+        Assert.True(minTotal > 0);              // min でも死なない (沈着はある)
+        Assert.True(maxTotal > 10 * minTotal);  // 強度差が沈着量に反映される
+    }
+
+    [Fact]
+    public void Smudge_Hardness_SoftVsHard()
+    {
+        // 硬さが輪郭の落ち方に効くこと (strength 修正後も維持されるべき既存動作の錨)。
+        var lHard = SolidLayer(64, 64, SKColors.White);
+        var lSoft = SolidLayer(64, 64, SKColors.White);
+        using (var c = new SKCanvas(lHard.Bitmap))
+            c.DrawRect(new SKRect(0, 0, 32, 64), new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Fill });
+        using (var c = new SKCanvas(lSoft.Bitmap))
+            c.DrawRect(new SKRect(0, 0, 32, 64), new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Fill });
+        var pick = new SKPoint(10, 32); var dab = new SKPoint(44, 32);
+        var hard = new SmudgeStroke(diameter: 21, strength: 1f, hardness: 1f);
+        var soft = new SmudgeStroke(diameter: 21, strength: 1f, hardness: 0f);
+        hard.PickUp(lHard.Bitmap, pick); soft.PickUp(lSoft.Bitmap, pick);
+        hard.SmudgeAt(lHard.Bitmap, dab); soft.SmudgeAt(lSoft.Bitmap, dab);
+        // 中半径 (u≒0.76): 硬いは全沈着≒黒、柔らかいは部分沈着≒灰
+        byte hardMid = lHard.Bitmap.GetPixel(44, 40).Red;
+        byte softMid = lSoft.Bitmap.GetPixel(44, 40).Red;
+        Assert.True(hardMid < 40);
+        Assert.True(softMid > 120);
+        Assert.True(softMid > hardMid);
+    }
+
+    [Fact]
+    public void Smudge_Stroke_Trail_IsContinuous()
+    {
+        // 押→動の模擬: dot から白地へ小刻みに SmudgeAt を重ねると切れ目なく引きずられること。
+        var l = SmudgeFixture(out var dot, out _);
+        var stroke = new SmudgeStroke(diameter: 11, strength: 1f, hardness: 1f);
+        stroke.PickUp(l.Bitmap, dot);
+        foreach (float x in new[] { 14f, 18f, 22f, 26f, 30f })
+            stroke.SmudgeAt(l.Bitmap, new SKPoint(x, 32));
+        foreach (float x in new[] { 18f, 22f, 26f })
+            Assert.True(l.Bitmap.GetPixel((int)x, 32).Red < 200);
+    }
+
+    [Fact]
+    public void Smudge_WeakStrength_LeavesPathNearlyUntouched()
+    {
+        // 弱強度で白地を引きずっても軌跡はほぼ残らない (reload が追従する)。旧実装は終端に真っ黒を stamp した。
+        var l = SmudgeFixture(out var dot, out _);
+        var stroke = new SmudgeStroke(diameter: 11, strength: 0f, hardness: 1f);
+        stroke.PickUp(l.Bitmap, dot);
+        foreach (float x in new[] { 18f, 22f, 26f, 30f, 34f, 38f })
+            stroke.SmudgeAt(l.Bitmap, new SKPoint(x, 32));
+        var end = l.Bitmap.GetPixel(38, 32);
+        long drift = System.Math.Abs(end.Red - 255) + System.Math.Abs(end.Green - 255) + System.Math.Abs(end.Blue - 255);
+        Assert.True(drift < 30);
+    }
+
     // ---- 硬さ・間隔 ----
 
     [Fact]

@@ -1877,6 +1877,7 @@ public partial class MainWindow : Window
                 if (!l.Visible || l.Locked || l.Bitmap == null) continue;
                 if (!l.HitTest(docPoint) || !InsideSelection(docPoint)) continue;
                 undoStack.Push(doc);
+                Document.EnsureUniqueBitmap(l);   // COW: Push後の直接画素編集がUndo snapshotを汚さない
                 strokePoints = new List<SKPoint> { ToLayerPixel(l, docPoint) };
                 strokeDocPoints = new List<SKPoint> { docPoint };
                 dragLayer = l;
@@ -2070,7 +2071,12 @@ public partial class MainWindow : Window
             var props = e.GetCurrentPoint((Control)s).Properties;
             if (!props.IsLeftButtonPressed) { EndPaintStroke(); return; }
             docPoint = CanvasPoint(e, (Control)s);
-            if (!InsideSelection(docPoint)) return;
+            if (!InsideSelection(docPoint))
+            {
+                // 選択外では描かないが、Liquify再入時の飛び (stale smudgeLastDoc) を防ぐため起点だけ更新する
+                if (currentTool == Tool.Smudge) smudgeLastDoc = docPoint;
+                return;
+            }
             var layer = dragLayer;
             var lp = ToLayerPixel(layer, docPoint);
             strokePoints.Add(lp);
@@ -2120,15 +2126,32 @@ public partial class MainWindow : Window
             }
             else if (currentTool == Tool.Smudge)
             {
+                // 前回層画素→今回層画素を間隔配置で補間し、高速ドラッグでも切れ目なく stamp する (Clone/Brush相当)。
+                // ダブ中心が選択外のものは飛ばす (Clone accept / Heal と同規則)。
+                float dia = BrushDiameter();
+                var prevLp = strokePoints.Count >= 2 ? strokePoints[^2] : lp;
+                var seg = new List<SKPoint> { prevLp, lp };
                 if (smudgeMode == "Smudge" && activeSmudge != null)
-                    activeSmudge.SmudgeAt(layer.Bitmap, lp);
+                {
+                    foreach (var dab in BrushTip.DabPositions(seg, dia, brushSpacing))
+                    {
+                        if (!InsideSelection(ToDocPixel(layer, dab))) continue;
+                        activeSmudge.SmudgeAt(layer.Bitmap, dab);
+                    }
+                }
                 else if (smudgeMode == "Blur" && blurSampleBmp != null)
-                    SmudgeStroke.BlurAt(layer.Bitmap, blurSampleBmp, lp,
-                        BrushDiameter(), brushHardness, brushOpacity);
+                {
+                    foreach (var dab in BrushTip.DabPositions(seg, dia, brushSpacing))
+                    {
+                        if (!InsideSelection(ToDocPixel(layer, dab))) continue;
+                        SmudgeStroke.BlurAt(layer.Bitmap, blurSampleBmp, dab,
+                            dia, brushHardness, brushOpacity);
+                    }
+                }
                 else if (smudgeMode == "Liquify" && smudgeLastDoc != null)
                 {
                     var prev = ToLayerPixel(layer, smudgeLastDoc.Value);
-                    SmudgeStroke.PushAt(layer.Bitmap, prev, lp, BrushDiameter(), brushHardness, brushOpacity);
+                    SmudgeStroke.PushAt(layer.Bitmap, prev, lp, dia, brushHardness, brushOpacity);
                 }
                 smudgeLastDoc = docPoint;
             }

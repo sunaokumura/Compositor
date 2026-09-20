@@ -311,7 +311,10 @@ public class SmudgeStroke
             }
     }
 
-    /// <summary>One smudge dab; returns pixels actually touched.</summary>
+    /// <summary>One smudge dab; returns pixels actually touched.
+    /// Deposit and pickup both scale with strength (Strength = brush opacity):
+    /// full strength lays the carried paint down opaquely and holds it long,
+    /// weak strength barely tints and re-loads from the canvas immediately.</summary>
     public int SmudgeAt(SKBitmap bmp, SKPoint center)
     {
         if (carried == null) PickUp(bmp, center);
@@ -322,7 +325,7 @@ public class SmudgeStroke
         for (int dy = -r; dy <= r; dy++)
             for (int dx = -r; dx <= r; dx++)
             {
-                float w = BrushTip.Weight(MathF.Sqrt(dx * dx + dy * dy) / radius, hardness);
+                float w = BrushTip.Weight(MathF.Sqrt(dx * dx + dy * dy) / radius, hardness) * strength;
                 if (w <= 0) continue;
                 int x = cx + dx, y = cy + dy;
                 if (x < 0 || y < 0 || x >= bmp.Width || y >= bmp.Height) continue;
