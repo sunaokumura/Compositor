@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     readonly List<Document> openDocs = new();
     bool updatingTabs;
 
-    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand, Crop, Distort }
+    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand, Crop, Distort, Shape, Gradient }
     Tool currentTool = Tool.Move;
     List<SKPoint> strokePoints;       // active brush stroke (layer-pixel space)
     // --- paint settings (Mac BrushSettings subset) ---
@@ -58,6 +58,16 @@ public partial class MainWindow : Window
     SelectionKind marqueeShape = SelectionKind.Rectangle;   // Mで Rectangle/Ellipse 切替
     SelectionKind lassoKind = SelectionKind.Freehand;       // Lで Freehand/Polygon 切替
     SelectionMode selModeChoice = SelectionMode.Replace;    // 工具栏Mode (Shift=Add/Option=Subtractで上書き)
+    // --- Shape / Gradient state (Mac ShapeTool.swift / Gradient.swift subset) ---
+    ShapeKind shapeKind = ShapeKind.Rectangle;
+    float shapeCornerRadius = 12f;      // RoundedRect用 (layer px)
+    SKPoint shapeAnchor;                // drag開始点 (doc px)
+    SKRect? shapeRect;                  // live preview (doc px)
+    bool shapeSquare, shapeFromCenter;  // Shift / Alt
+    GradientDraft gradientDraft;        // pending (Enter確定・Esc取消)
+    Layer gradientLayer;                // draft対象層
+    bool gradientDragging;
+    SKColor gradientBg = SKColors.White;
     List<SKPoint> lassoDraft;         // freehand draft (document px, Enter/ダブルクリック確定)
     List<SKPoint> polygonDraft;       // polygonal vertices (document px)
     SKPoint polygonCursor;            // polygonal rubber-band end
@@ -205,10 +215,19 @@ public partial class MainWindow : Window
         {
             int sel = LayerList.SelectedIndex;
             LayerList.Items.Clear();
+            var byId = doc.Layers.ToDictionary(l => l.Id);
             for (int i = doc.Layers.Count - 1; i >= 0; i--)
             {
                 var l = doc.Layers[i];
-                LayerList.Items.Add($"{(l.Visible ? "" : "[hidden] ")}{l.Name}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
+                int depth = 0;
+                for (var p = l.ParentId; p.HasValue && depth <= 64; depth++)
+                    if (!byId.TryGetValue(p.Value, out var n)) break; else p = n.ParentId;
+                string indent = new string(' ', Math.Min(depth, 8) * 2).Replace(" ", "· ");
+                string kind = l.IsGroup ? "[F] " : "";
+                string mask = MaskOps.HasMask(l) ? (l.MaskSelected ? "[M*]" : "[M]") : "";
+                string clip = l.ClipSourceId != null ? "[C]" : "";
+                string shape = l.Shape != null ? "[S]" : "";
+                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{kind}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
             }
             if (LayerList.ItemCount > 0)
                 LayerList.SelectedIndex = Math.Clamp(sel, 0, LayerList.ItemCount - 1);
@@ -367,7 +386,28 @@ public partial class MainWindow : Window
             using var dot = new SKPaint { Color = new SKColor(0, 160, 255), Style = SKPaintStyle.Fill, IsAntialias = true };
             foreach (var v in polygonDraft) canvas.DrawCircle(v.X * zoom, v.Y * zoom, 3, dot);
         }
+        // Shape drag preview (Mac ShapeDraft相当): 楕円はoval、それ以外はrect
+        if (shapeRect is SKRect sr2)
+        {
+            var r = new SKRect(sr2.Left * zoom, sr2.Top * zoom, sr2.Right * zoom, sr2.Bottom * zoom);
+            if (shapeKind == ShapeKind.Ellipse) MarchingAnts(canvas, p => canvas.DrawOval(r, p));
+            else MarchingAnts(canvas, p => canvas.DrawRect(r, p));
+        }
+        // Gradient pending line (Mac GradientEdit相当): 線＋端点○
+        if (gradientDraft != null && gradientLayer != null && gradientDraft.HasLine)
+        {
+            var a = LayerToDoc(gradientLayer, gradientDraft.Start);
+            var b = LayerToDoc(gradientLayer, gradientDraft.End);
+            using var paint = new SKPaint { Color = new SKColor(0, 160, 255), Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, IsAntialias = true };
+            canvas.DrawLine(a.X * zoom, a.Y * zoom, b.X * zoom, b.Y * zoom, paint);
+            using var dot = new SKPaint { Color = new SKColor(0, 160, 255), Style = SKPaintStyle.Fill, IsAntialias = true };
+            canvas.DrawCircle(a.X * zoom, a.Y * zoom, 4, dot);
+            canvas.DrawCircle(b.X * zoom, b.Y * zoom, 4, dot);
+        }
     }
+
+    SKPoint LayerToDoc(Layer l, SKPoint lp) =>
+        new(l.Position.X + lp.X * l.ScaleX, l.Position.Y + lp.Y * l.ScaleY);
 
     /// <summary>ブラシ環表示 (Mac BrushCursorOverlay相当): 外環=径・内破線=硬さ・×=Clone採取点.</summary>
     void DrawBrushOverlay(SKCanvas canvas)
@@ -433,6 +473,8 @@ public partial class MainWindow : Window
     void SetTool(Tool t)
     {
         if (floating != null) CommitFloating();   // 画素移動中は工具切替で確定
+        if (gradientDraft != null && t != Tool.Gradient) CommitGradient();   // 保留グラデは工具切替で適用 (Mac resolveGradient相当)
+        if (t != Tool.Shape) shapeRect = null;
         if (t != Tool.Lasso) lassoDraft = null;
         if (t != Tool.Polygon) { polygonDraft = null; hasPolygonCursor = false; }
         if (t != Tool.Distort) CancelDistortSilently();
@@ -467,6 +509,10 @@ public partial class MainWindow : Window
             Tool.Distort => ("Distort", distortCorners == null
                 ? "T: 層を選択して歪み開始"
                 : "角を掴んで歪み · Shift=軸固定 · Enter確定 · Esc取消"),
+            Tool.Shape => ("Shape (U)", "Dragで形状を描画 · Shift=正方形 · Alt=中心 · 新規層に作成"),
+            Tool.Gradient => ("Gradient (G)", gradientDraft != null
+                ? "Enter=確定 · Esc=取消 · Shift=45° · 端点は再ドラッグで調整"
+                : "Dragで引張描画 · Shift=45° · Enter確定 · Esc取消"),
             _ => (t.ToString(), ""),
         };
         if (ToolHeaderTitle != null) ToolHeaderTitle.Text = title;
@@ -493,6 +539,8 @@ public partial class MainWindow : Window
         if (EyedropperBtn != null) EyedropperBtn.Background = currentTool == Tool.Eyedropper ? on : off;
         if (CropBtn != null) CropBtn.Background = currentTool == Tool.Crop ? on : off;
         if (DistortBtn != null) DistortBtn.Background = currentTool == Tool.Distort ? on : off;
+        if (ShapeBtn != null) ShapeBtn.Background = currentTool == Tool.Shape ? on : off;
+        if (GradientBtn != null) GradientBtn.Background = currentTool == Tool.Gradient ? on : off;
     }
 
     float BrushDiameter() => (float)(BrushSizeSlider?.Value ?? 24);
@@ -581,6 +629,213 @@ public partial class MainWindow : Window
     void OnToolEyedropper(object s, RoutedEventArgs e) => SetTool(Tool.Eyedropper);
     void OnToolCrop(object s, RoutedEventArgs e) => SetTool(Tool.Crop);
     void OnToolDistort(object s, RoutedEventArgs e) => BeginDistortTool();
+    void OnToolShape(object s, RoutedEventArgs e) => SetTool(Tool.Shape);
+    void OnToolGradient(object s, RoutedEventArgs e) => SetTool(Tool.Gradient);
+    void OnShapeKindCycle(object s, RoutedEventArgs e)
+    {
+        shapeKind = shapeKind == ShapeKind.Rectangle ? ShapeKind.RoundedRect
+            : shapeKind == ShapeKind.RoundedRect ? ShapeKind.Ellipse : ShapeKind.Rectangle;
+        if (ShapeKindBtn != null) ShapeKindBtn.Content = shapeKind.ToString();
+        Log($"ShapeKind={shapeKind}");
+        RefreshToolHeader();
+    }
+
+    // ---------- layer system: mask / group / clip / merge / fill (Mac 層系 subset) ----------
+
+    bool strokeOnMask;   // brush stroke targets the mask (Mac isMaskSelected paint)
+
+    void OnMaskAddWhite(object s, RoutedEventArgs e) => AddMaskForSelected(true);
+    void OnMaskAddBlack(object s, RoutedEventArgs e) => AddMaskForSelected(false);
+
+    void AddMaskForSelected(bool revealing)
+    {
+        if (Selected is not { } l || l.Bitmap == null || l.IsGroup || MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        if (doc.Selection != null)
+        {
+            MaskOps.AddMaskFromSelection(doc, l, revealing);
+            doc.ClearSelection();   // 選択は使い切り (Mac addMask相当)
+        }
+        else MaskOps.AddMask(l, revealing);
+        Log($"AddMask revealing={revealing} on '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskDelete(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        MaskOps.DeleteMask(l);
+        Log($"DeleteMask '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskToggleEnable(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        l.MaskEnabled = !l.MaskEnabled;
+        Log($"MaskEnabled={l.MaskEnabled} '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskSelectTarget(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        l.MaskSelected = !l.MaskSelected;   // 描画対象の切替のみ (Undo対象外・Mac同様選択扱い)
+        Log($"MaskSelected={l.MaskSelected} '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskInvert(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        MaskOps.Invert(l);
+        Log($"MaskInvert '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskFeather(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        MaskOps.Feather(l, 2f);
+        Log($"MaskFeather r=2 '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnMaskLinkToggle(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !MaskOps.HasMask(l)) return;
+        undoStack.Push(doc);
+        l.MaskLinked = !l.MaskLinked;
+        Log($"MaskLinked={l.MaskLinked} '{l.Name}'");
+        RefreshAll();
+    }
+
+    void OnGroupAdd(object s, RoutedEventArgs e)
+    {
+        undoStack.Push(doc);
+        var g = LayerHierarchy.AddGroup(doc, Selected);
+        if (g == null) return;
+        Log($"AddGroup '{g.Name}'");
+        RefreshAll();
+        SafeSelect(doc.Layers.Count - 1 - doc.Layers.IndexOf(g));
+    }
+
+    void OnGroupSelected(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || l.IsGroup) return;
+        undoStack.Push(doc);
+        var g = LayerHierarchy.GroupLayers(doc, new[] { l });
+        Log(g != null ? $"Group '{g.Name}'" : "Group failed");
+        RefreshAll();
+    }
+
+    void OnUngroup(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !l.IsGroup) return;
+        undoStack.Push(doc);
+        bool ok = LayerHierarchy.Ungroup(doc, l.Id);
+        Log($"Ungroup '{l.Name}' ok={ok}");
+        RefreshAll();
+    }
+
+    void OnToggleClip(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l) return;
+        undoStack.Push(doc);
+        bool ok = ClipOps.Toggle(doc, l.Id);
+        Log($"ToggleClip '{l.Name}' ok={ok}");
+        RefreshAll();
+    }
+
+    void OnMergeGroup(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || !l.IsGroup) return;
+        var plan = MergeOps.MergeGroupPlan(doc, l.Id);
+        if (plan == null) { Log("MergeGroup: nothing to merge"); return; }
+        undoStack.Push(doc);
+        var merged = MergeOps.Execute(doc, plan);
+        Log(merged != null ? $"MergeGroup -> '{merged.Name}'" : "MergeGroup failed");
+        RefreshAll();
+    }
+
+    void OnContentFill(object s, RoutedEventArgs e)
+    {
+        if (Selected is not { } l || l.Bitmap == null || doc.Selection == null) return;
+        undoStack.Push(doc);
+        try
+        {
+            int n = ContentFillOps.FillSelection(doc, l);
+            Log($"ContentFill '{l.Name}' filled={n} (近似・周囲平均)");
+        }
+        catch (ContentFillOps.Failure ex)
+        {
+            Log("ContentFill failed: " + ex.Message);
+        }
+        RefreshAll();
+    }
+
+    // --- gradient draft (Mac GradientEdit subset: 引張描画・端点調整・Shift45°・Enter確定) ---
+
+    SKPoint ToLayerPixelClamped(Layer l, SKPoint docPoint)
+    {
+        var lp = ToLayerPixel(l, docPoint);
+        return new SKPoint(Math.Clamp(lp.X, 0, Math.Max(0, l.Bitmap.Width - 1)),
+            Math.Clamp(lp.Y, 0, Math.Max(0, l.Bitmap.Height - 1)));
+    }
+
+    void BeginGradient(SKPoint docPoint)
+    {
+        if (Selected is not { } l || l.Bitmap == null || l.IsGroup || l.Locked) return;
+        // 同一対象への再ドラッグは端点を置き換え (Mac beginGradient相当)
+        if (gradientDraft != null && gradientLayer == l)
+        {
+            gradientDraft.Start = ToLayerPixelClamped(l, docPoint);
+            gradientDraft.End = gradientDraft.Start;
+            RenderCanvas();
+            return;
+        }
+        CommitGradient();   // 別層の保留は先に適用
+        undoStack.Push(doc);   // 確定は同一Undoに (draft自体は非破壊)
+        gradientDraft = new GradientDraft { Start = ToLayerPixelClamped(l, docPoint) };
+        gradientDraft.End = gradientDraft.Start;
+        gradientDraft.Shape = GradientShape.Linear;
+        gradientDraft.Style = GradientStyle.ForegroundToTransparent;
+        gradientLayer = l;
+    }
+
+    void MoveGradient(SKPoint docPoint, bool snap45)
+    {
+        if (gradientDraft == null || gradientLayer == null) return;
+        var end = ToLayerPixelClamped(gradientLayer, docPoint);
+        gradientDraft.End = snap45 ? GradientOps.Snap45(gradientDraft.Start, end) : end;
+        RenderCanvas();
+        RefreshToolHeader();
+    }
+
+    void CommitGradient()
+    {
+        if (gradientDraft == null || gradientLayer == null) { gradientDraft = null; gradientLayer = null; return; }
+        if (gradientDraft.HasLine && doc.Layers.Contains(gradientLayer))
+        {
+            GradientOps.Commit(gradientLayer, gradientDraft, BrushPaintColor(), gradientBg);
+            Log($"Gradient commit on '{gradientLayer.Name}'");
+        }
+        gradientDraft = null; gradientLayer = null;
+        RefreshAll();
+    }
+
+    void CancelGradient()
+    {
+        gradientDraft = null; gradientLayer = null;
+        // Press時にpushしたUndoエントリを取り消し (draftは非破壊のため)
+        if (undoStack.CanUndo) undoStack.Undo(doc);
+        Log("Gradient cancel");
+        RefreshAll();
+    }
 
     /// <summary>Shift=加算・Option/Alt=減算、なければ工具栏Mode (Mac selectionMode相当).</summary>
     SelectionMode EffectiveSelMode(KeyModifiers mods)
@@ -672,7 +927,12 @@ public partial class MainWindow : Window
     {
         if (Selected is not { } l) return;
         undoStack.Push(doc);
-        doc.Layers.Remove(l);
+        var removed = LayerHierarchy.Descendants(doc, l.Id);
+        removed.Add(l.Id);
+        doc.Layers.RemoveAll(x => removed.Contains(x.Id));
+        foreach (var x in doc.Layers.Where(x => x.ClipSourceId is Guid src && removed.Contains(src)))
+            x.ClipSourceId = null;   // 供給層の削除はリンク解除 (Mac bakeダイアログの簡略版)
+        Log($"DeleteLayer '{l.Name}' +{removed.Count - 1} descendants");
         RefreshAll();
     }
 
@@ -711,7 +971,11 @@ public partial class MainWindow : Window
             ScaleX = l.ScaleX, ScaleY = l.ScaleY, Sampling = l.Sampling,
             Blend = l.Blend, Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
             Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
-            Blur = l.Blur, Invert = l.Invert,
+            Blur = l.Blur, Invert = l.Invert, ParentId = l.ParentId,
+            Mask = l.Mask != null ? (byte[])l.Mask.Clone() : null, MaskW = l.MaskW, MaskH = l.MaskH,
+            MaskEnabled = l.MaskEnabled, MaskLinked = l.MaskLinked, MaskOffset = l.MaskOffset,
+            Shape = l.Shape?.Clone(),
+            // Clip link is NOT copied: a duplicate starts unclipped (Mac release-on-duplicate相当).
         });
         Log($"Duplicate '{l.Name}'");
         RefreshAll();
@@ -720,24 +984,11 @@ public partial class MainWindow : Window
     void OnMergeDown(object s, RoutedEventArgs e)
     {
         if (Selected is not { } top) return;
-        int i = doc.Layers.IndexOf(top);
-        if (i <= 0) return;   // bottom-up: index 0 is bottom, needs a layer below
-        var below = doc.Layers[i - 1];
-        if (below.Bitmap == null || top.Bitmap == null) return;
+        var plan = MergeOps.MergeDownPlan(doc, top.Id);
+        if (plan == null) { Log("MergeDown: nothing below to merge with"); return; }
         undoStack.Push(doc);
-        Document.EnsureUniqueBitmap(below);
-        using (var canvas = new SKCanvas(below.Bitmap))
-            Document.DrawLayer(canvas, new Layer
-            {
-                Bitmap = top.Bitmap, Visible = true, Opacity = top.Opacity,
-                Position = new SKPoint(top.Position.X - below.Position.X, top.Position.Y - below.Position.Y),
-                ScaleX = top.ScaleX, ScaleY = top.ScaleY, Sampling = top.Sampling,
-                Blend = top.Blend, Rotation = top.Rotation,
-                FlipH = top.FlipH, FlipV = top.FlipV, Brightness = top.Brightness,
-                Contrast = top.Contrast, Saturation = top.Saturation, Blur = top.Blur, Invert = top.Invert,
-            }, 1f);
-        doc.Layers.Remove(top);
-        Log($"MergeDown '{top.Name}' into '{below.Name}'");
+        var merged = MergeOps.Execute(doc, plan);
+        Log(merged != null ? $"MergeDown ({plan.Action}) -> '{merged.Name}'" : "MergeDown failed");
         RefreshAll();
     }
 
@@ -781,6 +1032,8 @@ public partial class MainWindow : Window
         if (li < 0 || k >= doc.Layers.Count) return;
         undoStack.Push(doc);
         (doc.Layers[i], doc.Layers[k]) = (doc.Layers[k], doc.Layers[i]);
+        ClipOps.Adopt(doc, doc.Layers[k]);
+        ClipOps.ReleaseDetached(doc);
         RefreshAll();
         SafeSelect(doc.Layers.Count - 1 - k);
     }
@@ -793,6 +1046,8 @@ public partial class MainWindow : Window
         if (li < 0 || k < 0) return;
         undoStack.Push(doc);
         (doc.Layers[i], doc.Layers[k]) = (doc.Layers[k], doc.Layers[i]);
+        ClipOps.Adopt(doc, doc.Layers[k]);
+        ClipOps.ReleaseDetached(doc);
         RefreshAll();
         SafeSelect(doc.Layers.Count - 1 - k);
     }
@@ -1181,16 +1436,20 @@ public partial class MainWindow : Window
             case Key.H when mods == KeyModifiers.None: SetTool(Tool.Hand); e.Handled = true; break;
             case Key.C when mods == KeyModifiers.None: SetTool(Tool.Crop); e.Handled = true; break;
             case Key.T when mods == KeyModifiers.None: BeginDistortTool(); e.Handled = true; break;
+            case Key.U when mods == KeyModifiers.None: SetTool(Tool.Shape); e.Handled = true; break;
+            case Key.G when mods == KeyModifiers.None: SetTool(Tool.Gradient); e.Handled = true; break;
             case Key.Space: cropSpaceHeld = true; e.Handled = true; break;
             case Key.Enter:
                 if (currentTool == Tool.Distort && distortCorners != null) ApplyDistort();
                 else if (currentTool == Tool.Crop && cropRect != null) ApplyCrop();
+                else if (gradientDraft != null) CommitGradient();
                 else if (floating != null) CommitFloating();
                 else ConfirmDrafts();
                 e.Handled = true; break;
             case Key.Escape:
                 if (currentTool == Tool.Distort && distortCorners != null) CancelDistort();
                 else if (currentTool == Tool.Crop && (cropRect != null || cropDrag != null)) CancelCrop();
+                else if (gradientDraft != null) CancelGradient();
                 else if (floating != null) CancelFloating();
                 else if (lassoDraft != null || polygonDraft != null) CancelDrafts();
                 else { doc.ClearSelection(); RenderCanvas(); Log("Deselect"); }
@@ -1245,14 +1504,30 @@ public partial class MainWindow : Window
                 {
                     float d = mods.HasFlag(KeyModifiers.Shift) ? 10 : 1;
                     undoStack.Push(doc);
-                    var p = nudge.Position;
-                    if (k == Key.Left) p.X -= d;
-                    if (k == Key.Right) p.X += d;
-                    if (k == Key.Up) p.Y -= d;
-                    if (k == Key.Down) p.Y += d;
-                    nudge.Position = p;
-                    RenderCanvas();
-                    RefreshLayerList();
+                    // 覆面編集中の矢印は覆面の単独移動 (Mac unlinked-mask transform相当)
+                    if (nudge.MaskSelected && MaskOps.HasMask(nudge) && !nudge.MaskLinked)
+                    {
+                        var o = nudge.MaskOffset;
+                        if (k == Key.Left) o.X -= d;
+                        if (k == Key.Right) o.X += d;
+                        if (k == Key.Up) o.Y -= d;
+                        if (k == Key.Down) o.Y += d;
+                        nudge.MaskOffset = o;
+                        Log($"MaskOffset=({o.X},{o.Y})");
+                        RenderCanvas();
+                        RefreshLayerList();
+                    }
+                    else
+                    {
+                        var p = nudge.Position;
+                        if (k == Key.Left) p.X -= d;
+                        if (k == Key.Right) p.X += d;
+                        if (k == Key.Up) p.Y -= d;
+                        if (k == Key.Down) p.Y += d;
+                        nudge.Position = p;
+                        RenderCanvas();
+                        RefreshLayerList();
+                    }
                 }
                 e.Handled = true; break;
             case Key.Delete:
@@ -1419,6 +1694,25 @@ public partial class MainWindow : Window
             e.Pointer.Capture((IInputElement)s);
             return;
         }
+        if (currentTool == Tool.Shape)
+        {
+            shapeAnchor = docPoint;
+            shapeSquare = mods.HasFlag(KeyModifiers.Shift);
+            shapeFromCenter = mods.HasFlag(KeyModifiers.Alt);
+            shapeRect = new SKRect(docPoint.X, docPoint.Y, docPoint.X, docPoint.Y);
+            RenderCanvas();
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Gradient)
+        {
+            BeginGradient(docPoint);
+            gradientDragging = true;
+            RenderCanvas();
+            RefreshToolHeader();
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
 
         if (currentTool == Tool.Marquee)
         {
@@ -1498,8 +1792,14 @@ public partial class MainWindow : Window
                 strokeDocPoints = new List<SKPoint> { docPoint };
                 drawnDabs = PaintEngine.DabCount(strokePoints, BrushDiameter(), brushSpacing);
                 dragLayer = l;
-                PaintEngine.PaintBrushStroke(l, strokePoints, BrushPaintColor(),
-                    CurrentBrushSettings(), currentTool == Tool.Eraser, SelectionLayerRect(l));
+                // 覆面選択中は画素ではなく覆面へ描画 (Mac mask painting相当: B=白/E=黒)
+                strokeOnMask = l.MaskSelected && MaskOps.HasMask(l);
+                if (strokeOnMask)
+                    MaskOps.PaintStroke(l, strokePoints, currentTool == Tool.Brush ? (byte)255 : (byte)0,
+                        BrushDiameter(), brushHardness, brushOpacity);
+                else
+                    PaintEngine.PaintBrushStroke(l, strokePoints, BrushPaintColor(),
+                        CurrentBrushSettings(), currentTool == Tool.Eraser, SelectionLayerRect(l));
                 RenderCanvas();
                 RefreshLayerList();
                 break;
@@ -1644,6 +1944,7 @@ public partial class MainWindow : Window
     {
         strokePoints = null;
         strokeDocPoints = null;
+        strokeOnMask = false;
         dragLayer = null;
         drawnDabs = 0;
         activeSmudge = null;
@@ -1670,6 +1971,21 @@ public partial class MainWindow : Window
         if (currentTool == Tool.Distort && distortDragging)
         {
             DistortMoved(docPoint, e.KeyModifiers);
+            return;
+        }
+        if (currentTool == Tool.Shape && shapeRect != null)
+        {
+            var propsS = e.GetCurrentPoint((Control)s).Properties;
+            if (!propsS.IsLeftButtonPressed) { shapeRect = null; RenderCanvas(); return; }
+            shapeRect = ShapeOps.DragRect(shapeAnchor, docPoint, shapeSquare, shapeFromCenter);
+            RenderCanvas();
+            return;
+        }
+        if (currentTool == Tool.Gradient && gradientDragging)
+        {
+            var propsG = e.GetCurrentPoint((Control)s).Properties;
+            if (!propsG.IsLeftButtonPressed) return;
+            MoveGradient(docPoint, e.KeyModifiers.HasFlag(KeyModifiers.Shift));
             return;
         }
         // ブラシ環ホバー追従 (ボタン押下なし・描画系工具のみ)
@@ -1750,8 +2066,17 @@ public partial class MainWindow : Window
             var settings = CurrentBrushSettings();
             if (currentTool == Tool.Brush || currentTool == Tool.Eraser)
             {
-                // 増分ダブのみ描画（COW済みのため追加push不要）。選択枠で切り抜き。
-                using (var canvas = new SKCanvas(layer.Bitmap))
+                if (strokeOnMask && MaskOps.HasMask(layer) && strokePoints.Count >= 2)
+                {
+                    // 覆面への増分ストローク (COW済みのため追加push不要)
+                    var seg = new List<SKPoint> { strokePoints[^2], strokePoints[^1] };
+                    MaskOps.PaintStroke(layer, seg, currentTool == Tool.Brush ? (byte)255 : (byte)0,
+                        BrushDiameter(), brushHardness, brushOpacity);
+                }
+                else if (!strokeOnMask)
+                {
+                    // 増分ダブのみ描画（COW済みのため追加push不要）。選択枠で切り抜き。
+                    using (var canvas = new SKCanvas(layer.Bitmap))
                 {
                     var clip = SelectionLayerRect(layer);
                     bool clipped = clip is SKRect c && c.Width > 0 && c.Height > 0;
@@ -1762,6 +2087,7 @@ public partial class MainWindow : Window
                             settings, currentTool == Tool.Eraser, drawnDabs);
                     }
                     finally { if (clipped) canvas.Restore(); }
+                    }
                 }
             }
             else if (currentTool == Tool.Clone && cloneSampleBmp != null && strokeDocPoints != null)
@@ -1815,6 +2141,29 @@ public partial class MainWindow : Window
         // UndoはPressed時にpush済み。ここではドラッグ状態の解除のみ。
         if (currentTool == Tool.Crop && cropDrag != null) { CropReleased(); e.Pointer.Capture(null); return; }
         if (currentTool == Tool.Distort && distortDragging) { DistortReleased(); e.Pointer.Capture(null); return; }
+        if (currentTool == Tool.Shape && shapeRect != null)
+        {
+            var r = shapeRect.Value; shapeRect = null;
+            r.Intersect(new SKRect(0, 0, doc.Width, doc.Height));
+            if (r.Width >= 1 && r.Height >= 1)
+            {
+                undoStack.Push(doc);
+                var nl = ShapeOps.FinishShape(doc, r, shapeKind, BrushPaintColor(),
+                    shapeKind == ShapeKind.RoundedRect ? shapeCornerRadius : 0, Selected);
+                Log(nl != null ? $"Shape {shapeKind} {r.Width:F0}x{r.Height:F0} -> '{nl.Name}'" : "Shape failed");
+                RefreshAll();
+            }
+            else RenderCanvas();
+            e.Pointer.Capture(null); return;
+        }
+        if (currentTool == Tool.Gradient && gradientDragging)
+        {
+            gradientDragging = false;
+            // clickのみ(線なし)は破棄、それ以外は保留→Enter確定 (Mac endGradientDrag相当)
+            if (gradientDraft != null && !gradientDraft.HasLine) CancelGradient();
+            else { RenderCanvas(); RefreshToolHeader(); }
+            e.Pointer.Capture(null); return;
+        }
         if (marqueeActive)
         {
             marqueeActive = false;

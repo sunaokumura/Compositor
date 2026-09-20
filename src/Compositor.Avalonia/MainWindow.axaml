@@ -53,7 +53,9 @@
             <Button x:Name="EyedropperBtn" Content="I" Width="36" Height="28" Click="OnToolEyedropper" ToolTip.Tip="I: スポイト (Alt-clickでも採取可)"/>
             <Button x:Name="CropBtn" Content="C" Width="36" Height="28" Click="OnToolCrop" ToolTip.Tip="C: 切抜き (Alt=対称・Space=移動・Enter確定・Esc取消)"/>
             <Button x:Name="DistortBtn" Content="T" Width="36" Height="28" Click="OnToolDistort" ToolTip.Tip="T: 自由変形・歪み (角を掴んで歪み・Shift=軸固定・Enter確定・Esc取消)"/>
-            <Button Content="F" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のコンテンツに応じた塗りつぶし。Windows版では未対応です。"/>
+            <Button x:Name="ShapeBtn" Content="U" Width="36" Height="28" Click="OnToolShape" ToolTip.Tip="U: 形状 (矩形/角丸/楕円・Shift=正方形・Alt=中心・新規層)"/>
+            <Button x:Name="GradientBtn" Content="G" Width="36" Height="28" Click="OnToolGradient" ToolTip.Tip="G: グラデーション (引張描画・Shift=45°・Enter確定・Esc取消)"/>
+            <Button Content="F" Width="36" Height="28" Click="OnContentFill" ToolTip.Tip="選択範囲を周囲から近似補填 (Mac ContentFillの近似・小穴用)"/>
             <Button Content="SR" Width="36" Height="28" FontSize="10" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。"/>
           </StackPanel>
         </ScrollViewer>
@@ -80,10 +82,33 @@
               <Button Content="Up" Click="OnUp"/>
               <Button Content="Down" Click="OnDown"/>
               <Button Content="Duplicate" Click="OnDuplicateLayer" ToolTip.Tip="選択レイヤーを複製"/>
-              <Button Content="Merge Down" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合"/>
+              <Button Content="Merge Down" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合 (フォルダ内・クリップ込)"/>
+              <Button Content="Merge Group" Click="OnMergeGroup" ToolTip.Tip="選択フォルダの中身を結合"/>
               <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged"/>
               <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止"/>
             </WrapPanel>
+            <TextBlock Text="Mask (Mac 層覆面相当)" FontWeight="SemiBold" FontSize="12"/>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="+White" Click="OnMaskAddWhite" ToolTip.Tip="全表示覆面を追加 (選択あり=選択外を残す)"/>
+              <Button Content="+Black" Click="OnMaskAddBlack" ToolTip.Tip="全隠蔽覆面を追加"/>
+              <Button Content="Del Mask" Click="OnMaskDelete" ToolTip.Tip="覆面を削除"/>
+              <Button Content="On/Off" Click="OnMaskToggleEnable" ToolTip.Tip="覆面の有効/無効"/>
+              <Button Content="EditPx/Mask" Click="OnMaskSelectTarget" ToolTip.Tip="描画対象: 画素/覆面 切替 (B=白・E=黒で覆面描画)"/>
+              <Button Content="Invert" Click="OnMaskInvert" ToolTip.Tip="覆面を反転"/>
+              <Button Content="Feather" Click="OnMaskFeather" ToolTip.Tip="覆面をぼかす (羽化 r=2)"/>
+              <Button Content="Link" Click="OnMaskLinkToggle" ToolTip.Tip="層と覆面の連結/解除 (解除時は矢印で覆面のみ移動)"/>
+            </WrapPanel>
+            <TextBlock Text="Group / Clip (Mac フォルダ・切抜覆面相当)" FontWeight="SemiBold" FontSize="12"/>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="+Folder" Click="OnGroupAdd" ToolTip.Tip="選択層の隣にフォルダを作成"/>
+              <Button Content="Group" Click="OnGroupSelected" ToolTip.Tip="選択層をフォルダにまとめる"/>
+              <Button Content="Ungroup" Click="OnUngroup" ToolTip.Tip="フォルダを解除 (中身は残る)"/>
+              <Button Content="Clip" Click="OnToggleClip" ToolTip.Tip="下層への切抜覆面 設定/解除"/>
+            </WrapPanel>
+            <TextBlock Text="Shape (Mac ShapeTool相当)" FontWeight="SemiBold" FontSize="12"/>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button x:Name="ShapeKindBtn" Content="Rectangle" Click="OnShapeKindCycle" ToolTip.Tip="Rectangle→RoundedRect→Ellipse 循環"/>
+            </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Rename" VerticalAlignment="Center"/>
               <TextBox x:Name="RenameBox" Width="130"/>

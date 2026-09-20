@@ -6,6 +6,9 @@ namespace Compositor;
 
 public class Layer
 {
+    public Guid Id = Guid.NewGuid();
+    public Guid? ParentId;             // group folder, null = root (Mac parentID)
+    public bool IsGroup;               // folder placeholder: Bitmap null, skipped in render
     public string Name = "Layer";
     public SKBitmap Bitmap;          // source pixels — copy-on-write: destructive paint clones first (see Document.EnsureUniqueBitmap)
     public bool Visible = true;
@@ -37,9 +40,18 @@ public class Layer
     // layers below at draw/compose time (non-destructive, Undo-safe metadata).
     public bool IsAdjustmentLayer;
     public LayerAdjustment Adjustment;
+    // --- mask / group / clip / shape (Mac LayerMask/LayerGroups/LiveLayerMask/ShapeTool subset) ---
+    // Mask covers the layer pixel grid (white = reveal). Offset in layer px (Mac placement subset).
+    public byte[] Mask; public int MaskW, MaskH;
+    public bool MaskEnabled = true;
+    public bool MaskLinked = true;     // linked = rides the layer; unlinked = fixed offset
+    public SKPoint MaskOffset;
+    public bool MaskSelected;          // true = paint targets the mask (Mac isMaskSelected)
+    public Guid? ClipSourceId;         // live/clipping mask base (Mac maskSourceID)
+    public ShapeInfo Shape;            // shape style metadata (raster layer; Mac LayerShape subset)
 
-    public SKRect Bounds => SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
-    public bool HitTest(SKPoint p) => Bounds.Contains(p.X, p.Y);
+    public SKRect Bounds => Bitmap == null ? SKRect.Empty : SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
+    public bool HitTest(SKPoint p) => Bitmap != null && Bounds.Contains(p.X, p.Y);
     public float DrawW => Bitmap == null ? 0 : Bitmap.Width * ScaleX;
     public float DrawH => Bitmap == null ? 0 : Bitmap.Height * ScaleY;
 }
@@ -52,6 +64,10 @@ public class LayerSnapshot
     {
         public Layer Layer;
         public SKBitmap BitmapRef;   // copy-on-write anchor: restore reassigns so pre-paint pixels survive Undo
+        public Guid Id; public Guid? ParentId; public bool IsGroup;
+        public byte[] MaskRef; public int MaskW, MaskH;   // copy-on-write anchor (see EnsureUniqueMask)
+        public bool MaskEnabled, MaskLinked, MaskSelected; public SKPoint MaskOffset;
+        public Guid? ClipSourceId; public ShapeInfo Shape;
         public string Name; public bool Visible; public bool Locked;
         public float Opacity, ScaleX, ScaleY; public SKPoint Position; public SKBlendMode Blend;
         public LayerSampling Sampling;
@@ -68,6 +84,10 @@ public class LayerSnapshot
         var s = new LayerSnapshot { Width = doc.Width, Height = doc.Height, DocName = doc.Name };
         foreach (var l in doc.Layers)
             s.Items.Add(new Item { Layer = l, BitmapRef = l.Bitmap, Name = l.Name, Visible = l.Visible, Locked = l.Locked,
+                Id = l.Id, ParentId = l.ParentId, IsGroup = l.IsGroup,
+                MaskRef = l.Mask, MaskW = l.MaskW, MaskH = l.MaskH,
+                MaskEnabled = l.MaskEnabled, MaskLinked = l.MaskLinked, MaskSelected = l.MaskSelected,
+                MaskOffset = l.MaskOffset, ClipSourceId = l.ClipSourceId, Shape = l.Shape?.Clone(),
                 Opacity = l.Opacity, ScaleX = l.ScaleX, ScaleY = l.ScaleY, Position = l.Position, Blend = l.Blend,
                 Sampling = l.Sampling,
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
@@ -84,6 +104,11 @@ public class LayerSnapshot
         foreach (var it in Items)
         {
             it.Layer.Bitmap = it.BitmapRef;
+            it.Layer.Id = it.Id; it.Layer.ParentId = it.ParentId; it.Layer.IsGroup = it.IsGroup;
+            it.Layer.Mask = it.MaskRef; it.Layer.MaskW = it.MaskW; it.Layer.MaskH = it.MaskH;
+            it.Layer.MaskEnabled = it.MaskEnabled; it.Layer.MaskLinked = it.MaskLinked;
+            it.Layer.MaskSelected = it.MaskSelected; it.Layer.MaskOffset = it.MaskOffset;
+            it.Layer.ClipSourceId = it.ClipSourceId; it.Layer.Shape = it.Shape?.Clone();
             it.Layer.Name = it.Name; it.Layer.Visible = it.Visible; it.Layer.Locked = it.Locked;
             it.Layer.Opacity = it.Opacity; it.Layer.ScaleX = it.ScaleX; it.Layer.ScaleY = it.ScaleY; it.Layer.Position = it.Position;
             it.Layer.Blend = it.Blend; it.Layer.Sampling = it.Sampling;
@@ -177,11 +202,14 @@ public class Document
         var acc = new SKBitmap(Math.Max(1, Width), Math.Max(1, Height), SKColorType.Bgra8888, SKAlphaType.Premul);
         acc.Erase(SKColor.Empty);
         using var canvas = new SKCanvas(acc);
+        var byId = Layers.ToDictionary(l => l.Id);
         foreach (var layer in Layers)
         {
-            if (!layer.Visible) continue;
+            if (layer.IsGroup || !LayerHierarchy.IsEffectivelyVisible(this, layer)) continue;
             if (layer is { IsAdjustmentLayer: true, Adjustment: not null })
                 layer.Adjustment.ApplyToComposite(acc);
+            else if (layer.ClipSourceId is Guid s && byId.TryGetValue(s, out var b))
+                DrawClipped(canvas, this, layer, b, 1f);
             else
                 DrawLayer(canvas, layer, 1f);
         }
@@ -198,12 +226,71 @@ public class Document
             canvas.DrawBitmap(acc, new SKRect(0, 0, Width * zoom, Height * zoom));
             return;
         }
+        var byId = Layers.ToDictionary(l => l.Id);
         foreach (var layer in Layers)
         {
+            if (layer.IsGroup || !LayerHierarchy.IsEffectivelyVisible(this, layer)) continue;
             if (viewportDocRect is SKRect vp && IsOutsideViewport(layer, vp))
                 continue;
-            DrawLayer(canvas, layer, zoom);
+            if (layer.ClipSourceId is Guid s && byId.TryGetValue(s, out var b))
+                DrawClipped(canvas, this, layer, b, zoom);
+            else
+                DrawLayer(canvas, layer, zoom);
         }
+    }
+
+    /// <summary>Draw a clipped layer constrained to its base's alpha coverage (Mac live-mask
+    /// subset: DstIn approximation — base transform/rotation honored via DrawLayer).</summary>
+    public static void DrawClipped(SKCanvas canvas, Document doc, Layer layer, Layer baseLayer, float zoom)
+    {
+        int w = Math.Max(1, (int)(doc.Width * zoom)), h = Math.Max(1, (int)(doc.Height * zoom));
+        using var content = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+        content.Erase(SKColor.Empty);
+        using (var c = new SKCanvas(content))
+        {
+            // Neutral proxy: opacity/blend apply once at final composite below.
+            var proxy = new Layer { Bitmap = layer.Bitmap, Visible = true, Opacity = 1f,
+                Position = layer.Position, ScaleX = layer.ScaleX, ScaleY = layer.ScaleY,
+                Sampling = layer.Sampling, Blend = SKBlendMode.SrcOver,
+                Rotation = layer.Rotation, FlipH = layer.FlipH, FlipV = layer.FlipV,
+                Brightness = layer.Brightness, Contrast = layer.Contrast, Saturation = layer.Saturation,
+                Blur = layer.Blur, Invert = layer.Invert,
+                Mask = layer.Mask, MaskW = layer.MaskW, MaskH = layer.MaskH, MaskEnabled = layer.MaskEnabled,
+                MaskOffset = layer.MaskOffset, MaskLinked = layer.MaskLinked };
+            DrawLayer(c, proxy, zoom);
+        }
+        using var coverage = new SKBitmap(w, h, SKColorType.Bgra8888, SKAlphaType.Premul);
+        coverage.Erase(SKColor.Empty);
+        using (var c = new SKCanvas(coverage))
+        {
+            var proxy = new Layer { Bitmap = baseLayer.Bitmap, Visible = true, Opacity = 1f,
+                Position = baseLayer.Position, ScaleX = baseLayer.ScaleX, ScaleY = baseLayer.ScaleY,
+                Sampling = baseLayer.Sampling, Blend = SKBlendMode.SrcOver,
+                Rotation = baseLayer.Rotation, FlipH = baseLayer.FlipH, FlipV = baseLayer.FlipV };
+            if (proxy.Bitmap != null) DrawLayer(c, proxy, zoom);
+            else if (MaskOps.IsActive(baseLayer))
+            {
+                // Mask-only base (e.g. fill layer): coverage from the mask itself.
+                using var m = MaskOps.ApplyToBitmap(
+                    SolidWhite(baseLayer.Bitmap?.Width ?? doc.Width, baseLayer.Bitmap?.Height ?? doc.Height),
+                    baseLayer.Mask, baseLayer.MaskW, baseLayer.MaskH, baseLayer.MaskOffset);
+                if (m != null) DrawLayer(c, new Layer { Bitmap = m, Visible = true }, zoom);
+            }
+        }
+        using (var c = new SKCanvas(content))
+        using (var p = new SKPaint { BlendMode = SKBlendMode.DstIn })
+            c.DrawBitmap(coverage, 0, 0, p);
+        using var paint = new SKPaint { BlendMode = layer.Blend,
+            Color = SKColors.White.WithAlpha((byte)Math.Round(layer.Opacity * 255)) };
+        paint.FilterQuality = SamplingUtil.ToQuality(layer.Sampling);
+        canvas.DrawBitmap(content, 0, 0, paint);
+    }
+
+    static SKBitmap SolidWhite(int w, int h)
+    {
+        var b = new SKBitmap(Math.Max(1, w), Math.Max(1, h), SKColorType.Bgra8888, SKAlphaType.Premul);
+        b.Erase(SKColors.White);
+        return b;
     }
 
     static bool IsOutsideViewport(Layer layer, SKRect vp)
@@ -214,6 +301,15 @@ public class Document
         float l = layer.Position.X, t = layer.Position.Y;
         float r = l + layer.Bitmap.Width * layer.ScaleX, b = t + layer.Bitmap.Height * layer.ScaleY;
         return r <= vp.Left || l >= vp.Right || b <= vp.Top || t >= vp.Bottom;
+    }
+
+    /// <summary>Mask copy-on-write: clone mask bytes before any destructive mask paint so Undo keeps pre-paint pixels.</summary>
+    public static void EnsureUniqueMask(Layer layer)
+    {
+        if (layer?.Mask == null) return;
+        var copy = new byte[layer.Mask.Length];
+        Array.Copy(layer.Mask, copy, copy.Length);
+        layer.Mask = copy;
     }
 
     /// <summary>Copy-on-write: clone pixels before any destructive paint so Undo snapshots keep pre-paint pixels.</summary>
@@ -307,6 +403,24 @@ public class Document
     public static void DrawLayer(SKCanvas canvas, Layer layer, float zoom)
     {
         if (layer is not { Visible: true, Bitmap: not null } || layer.Opacity <= 0f) return;
+        // Layer mask (Mac LayerMask subset): bake coverage into a temp copy, then draw normally.
+        // Mask rides the layer (linked) by construction — pixels live in layer space; unlinked
+        // offsets sample shifted coverage (see MaskOps.CoverageAt).
+        if (MaskOps.IsActive(layer))
+        {
+            using var masked = MaskOps.ApplyToBitmap(layer.Bitmap, layer.Mask, layer.MaskW, layer.MaskH, layer.MaskOffset);
+            if (masked == null) return;
+            var proxy = new Layer
+            {
+                Bitmap = masked, Visible = true, Opacity = layer.Opacity, Position = layer.Position,
+                ScaleX = layer.ScaleX, ScaleY = layer.ScaleY, Sampling = layer.Sampling, Blend = layer.Blend,
+                Rotation = layer.Rotation, FlipH = layer.FlipH, FlipV = layer.FlipV,
+                Brightness = layer.Brightness, Contrast = layer.Contrast, Saturation = layer.Saturation,
+                Blur = layer.Blur, Invert = layer.Invert,
+            };
+            DrawLayer(canvas, proxy, zoom);
+            return;
+        }
         using var paint = new SKPaint();
         paint.Color = SKColors.White.WithAlpha((byte)Math.Round(layer.Opacity * 255));
         paint.BlendMode = layer.Blend;
