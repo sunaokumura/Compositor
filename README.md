@@ -48,7 +48,7 @@ export DOTNET_ROOT=$HOME/.dotnet PATH=$HOME/.dotnet:$PATH
 dotnet test tests/Compositor.Tests/Compositor.Tests.csproj
 dotnet publish src/Compositor.Avalonia -c Release -r win-x64 --self-contained true -o src/publish-win
 ```
-配置: `src/publish-win/` → `C:\Users\sunao\Apps\Compositor\`（上書き前に taskkill /IM Compositor.exe /F）
+配置: `src/publish-win/` → `C:\Users\<user>\Apps\Compositor\`（上書き前に taskkill /IM Compositor.exe /F）
 
 ## テスト
 - 単体8件＋性能2件＝10件合格（`dotnet test`）。

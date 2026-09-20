@@ -8,4 +8,4 @@
 | `04-after-drag.png` | ドラッグ移動後の配置 | E2E `FIX_S4_after_drag.png` のコピー (クラッシュ修正後の正常系証跡) |
 
 - いずれも Windows 実機で撮影された実画面。合成・作図ではない。
-- E2E原文は `/mnt/c/Users/sunao/Downloads/compositor_test/` に保存。
+- E2E原文はWindows実機のE2E作業フォルダに保存（公開物には含めない）。
