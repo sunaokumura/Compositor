@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build (Release)
+        run: dotnet build src/Compositor.Avalonia/Compositor.Avalonia.csproj -c Release --nologo
+        working-directory: .
+      - name: Test (t_48a8bb54 unit gate + stability/perf)
+        # Unit gate for E2E premise S1-S5 (device E2E itself runs on Windows hardware):
+        # DocumentModel (S1 add/remove, S3 composite, S4 export pixels),
+        # ToolParity (S5 clipboard, brush/adjust/transform undo-redo),
+        # Stability (100h-equivalent 5000-op soak, 0 crash, leak < 50MB),
+        # Perf (4K composite budget).
+        run: dotnet test tests/Compositor.Tests/Compositor.Tests.csproj -c Release --nologo
+        working-directory: .
+
+  publish-win:
+    runs-on: windows-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Publish win-x64 self-contained
+        run: dotnet publish src/Compositor.Avalonia -c Release -r win-x64 --self-contained true -o src/publish-win
+      - name: Upload publish output
+        uses: actions/upload-artifact@v4
+        with:
+          name: Compositor-win-x64
+          path: src/publish-win/
+          if-no-files-found: error
