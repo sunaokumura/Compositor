@@ -94,4 +94,21 @@ public class DocumentModelTests
         Assert.True(l.HitTest(new SKPoint(7, 7)));
         Assert.False(l.HitTest(new SKPoint(0, 0)));
     }
+
+    [Fact]
+    public void Undo_RevertsDragMove_PushBeforeDrag()
+    {
+        // UI規約: ドラッグ開始時(Pressed)にPushし、移動後にUndoで元の位置に戻ること。
+        var doc = new Document { Width = 100, Height = 100 };
+        var l = new Layer { Name = "x", Bitmap = MakeBitmap(20, 20), Position = new SKPoint(0, 0) };
+        doc.Layers.Add(l);
+        var stack = new UndoStack();
+        stack.Push(doc);   // ← OnCanvasPointerPressed相当（ドラッグ前）
+        l.Position = new SKPoint(140, 100);   // ← OnCanvasPointerMoved相当
+        stack.Undo(doc);
+        Assert.Equal(0, doc.Layers[0].Position.X);
+        Assert.Equal(0, doc.Layers[0].Position.Y);
+        stack.Redo(doc);
+        Assert.Equal(140, doc.Layers[0].Position.X);
+    }
 }

@@ -446,6 +446,7 @@ public partial class MainWindow : Window
             var l = doc.Layers[i];
             if (l.Visible && !l.Locked && l.HitTest(p))
             {
+                undoStack.Push(doc);   // ドラッグ前の状態を保存（Released時pushではUndoが効かない）
                 dragLayer = l;
                 dragStart = e.GetPosition((Visual)s);
                 dragLayerPos = l.Position;
@@ -479,7 +480,7 @@ public partial class MainWindow : Window
 
     void OnCanvasPointerReleased(object s, Avalonia.Input.PointerReleasedEventArgs e)
     {
-        if (dragLayer != null) { undoStack.Push(doc); sliderArmed = false; }
+        // UndoはPressed時にpush済み。ここではドラッグ状態の解除のみ。
         dragLayer = null;
         e.Pointer.Capture(null);
     }
