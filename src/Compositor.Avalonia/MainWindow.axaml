@@ -425,7 +425,7 @@
               <Button Classes="chip" x:Name="ShapeKindBtn" Content="Rectangle" Click="OnShapeKindCycle" ToolTip.Tip="Rectangle→RoundedRect→Ellipse 循環"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Rename" VerticalAlignment="Center" Classes="dim"/>
+              <TextBlock Text="Rename" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <TextBox x:Name="RenameBox" Width="130"/>
               <Button Classes="chip" Click="OnRename" ToolTip.Tip="層名を変更">
                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
@@ -435,21 +435,21 @@
               </Button>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Blend" VerticalAlignment="Center" Classes="dim"/>
-              <ComboBox x:Name="BlendBox" Width="120" SelectionChanged="OnBlendChanged"/>
+              <TextBlock Text="Blend" VerticalAlignment="Center" Width="56" Classes="dim"/>
+              <ComboBox x:Name="BlendBox" Width="110" SelectionChanged="OnBlendChanged"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Opacity" VerticalAlignment="Center" Classes="dim"/>
-              <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="132" ValueChanged="OnOpacityChanged"/>
+              <TextBlock Text="Opacity" VerticalAlignment="Center" Width="56" Classes="dim"/>
+              <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="112" ValueChanged="OnOpacityChanged"/>
               <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Scale %" VerticalAlignment="Center" Classes="dim"/>
-              <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="132" ValueChanged="OnScaleChanged"/>
+              <TextBlock Text="Scale %" VerticalAlignment="Center" Width="56" Classes="dim"/>
+              <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="112" ValueChanged="OnScaleChanged"/>
             </StackPanel>
             <TextBlock Text="Transform" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Rotate" VerticalAlignment="Center" Classes="dim"/>
+              <TextBlock Text="Rotate" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="RotateSlider" Minimum="-180" Maximum="180" Width="112" ValueChanged="OnRotateChanged"/>
               <TextBlock x:Name="RotateLabel" VerticalAlignment="Center" Text="0°" Foreground="#E8E8E8"/>
             </StackPanel>
@@ -480,16 +480,18 @@
               </Button>
             </WrapPanel>
             <TextBlock Text="Transform 数値入力" Classes="section"/>
-            <WrapPanel Orientation="Horizontal">
-              <TextBlock Text="X" VerticalAlignment="Center" Width="14"/>
-              <TextBox x:Name="TxX" Width="56"/>
-              <TextBlock Text="Y" VerticalAlignment="Center" Width="14"/>
-              <TextBox x:Name="TxY" Width="56"/>
-              <TextBlock Text="W" VerticalAlignment="Center" Width="16"/>
-              <TextBox x:Name="TxW" Width="56"/>
-              <TextBlock Text="H" VerticalAlignment="Center" Width="14"/>
-              <TextBox x:Name="TxH" Width="56"/>
-            </WrapPanel>
+            <Grid ColumnDefinitions="14,56,6,14,56">
+              <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" Width="14"/>
+              <TextBox Grid.Column="1" x:Name="TxX" Width="56"/>
+              <TextBlock Grid.Column="3" Text="Y" VerticalAlignment="Center" Width="14"/>
+              <TextBox Grid.Column="4" x:Name="TxY" Width="56"/>
+            </Grid>
+            <Grid ColumnDefinitions="14,56,6,14,56">
+              <TextBlock Grid.Column="0" Text="W" VerticalAlignment="Center" Width="16"/>
+              <TextBox Grid.Column="1" x:Name="TxW" Width="56"/>
+              <TextBlock Grid.Column="3" Text="H" VerticalAlignment="Center" Width="14"/>
+              <TextBox Grid.Column="4" x:Name="TxH" Width="56"/>
+            </Grid>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="°" VerticalAlignment="Center" Width="14"/>
               <TextBox x:Name="TxAngle" Width="56" ToolTip.Tip="回転 角時計回り"/>
@@ -502,7 +504,7 @@
               </Button>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Sample" VerticalAlignment="Center" Classes="dim"/>
+              <TextBlock Text="Sample" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <ComboBox x:Name="SamplingBox" Width="130" SelectedIndex="2" SelectionChanged="OnSamplingChanged" ToolTip.Tip="Nearest=近傍・Smooth=双線形・High=高品質 (Mac Sampling相当)">
                 <ComboBoxItem>Nearest</ComboBoxItem>
                 <ComboBoxItem>Smooth</ComboBoxItem>
@@ -554,7 +556,7 @@
             </WrapPanel>
             <TextBlock Text="Crop" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Ratio" VerticalAlignment="Center" Classes="dim"/>
+              <TextBlock Text="Ratio" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <ComboBox x:Name="CropRatioBox" Width="110" SelectedIndex="0" SelectionChanged="OnCropRatioChanged" ToolTip.Tip="Free=自由・Original=元比・1:1・4:3・16:9">
                 <ComboBoxItem>Free</ComboBoxItem>
                 <ComboBoxItem>Original</ComboBoxItem>
@@ -579,22 +581,22 @@
             </WrapPanel>
             <TextBlock Text="Adjust" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Bright" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <TextBlock Text="Bright" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="BrightSlider" Minimum="-100" Maximum="100" Width="112" ValueChanged="OnBrightChanged"/>
               <TextBlock x:Name="BrightLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Contrast" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <TextBlock Text="Contrast" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Width="112" ValueChanged="OnContrastChanged"/>
               <TextBlock x:Name="ContrastLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Satur." VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <TextBlock Text="Satur." VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="SaturSlider" Minimum="0" Maximum="200" Width="112" ValueChanged="OnSaturChanged"/>
               <TextBlock x:Name="SaturLabel" VerticalAlignment="Center" Text="100" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Blur" VerticalAlignment="Center" Width="52" Classes="dim"/>
+              <TextBlock Text="Blur" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="BlurSlider" Minimum="0" Maximum="25" Width="112" ValueChanged="OnBlurChanged"/>
               <TextBlock x:Name="BlurLabel" VerticalAlignment="Center" Text="0" Foreground="#E8E8E8"/>
             </StackPanel>
@@ -626,9 +628,12 @@
             </WrapPanel>
             <TextBlock Text="Brush" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Size" VerticalAlignment="Center" Classes="dim"/>
+              <TextBlock Text="Size" VerticalAlignment="Center" Width="56" Classes="dim"/>
               <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="112" Value="24"/>
-              <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色 (旧6色・FGと連動)"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="" VerticalAlignment="Center" Width="56"/>
+              <ComboBox x:Name="BrushColorBox" Width="110" ToolTip.Tip="ブラシ色 (旧6色・FGと連動)"/>
             </StackPanel>
             <TextBlock Text="Color" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -669,17 +674,17 @@
               </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Hard" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
+              <TextBlock Text="Hard" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
               <Slider x:Name="HardnessSlider" Minimum="0" Maximum="100" Width="112" Value="100" ValueChanged="OnHardnessChanged"/>
               <TextBlock x:Name="HardnessLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Space" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="間隔 径比% (ダブ配置ピッチ)"/>
+              <TextBlock Text="Space" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="間隔 径比% (ダブ配置ピッチ)"/>
               <Slider x:Name="SpacingSlider" Minimum="1" Maximum="200" Width="112" Value="15" ValueChanged="OnSpacingChanged"/>
               <TextBlock x:Name="SpacingLabel" VerticalAlignment="Center" Text="15%" Foreground="#E8E8E8"/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="Opac" VerticalAlignment="Center" Classes="dim" ToolTip.Tip="不透明度 1-100% (Smudge系はStrength・1-0キー対応)"/>
+              <TextBlock Text="Opac" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="不透明度 1-100% (Smudge系はStrength・1-0キー対応)"/>
               <Slider x:Name="BrushOpacitySlider" Minimum="1" Maximum="100" Width="112" Value="100" ValueChanged="OnBrushOpacityChanged"/>
               <TextBlock x:Name="BrushOpacityLabel" VerticalAlignment="Center" Text="100%" Foreground="#E8E8E8"/>
             </StackPanel>
@@ -696,7 +701,7 @@
                 <ComboBoxItem>Blur</ComboBoxItem>
                 <ComboBoxItem>Liquify</ComboBoxItem>
               </ComboBox>
-              <ComboBox x:Name="HealModeBox" Width="140" SelectedIndex="0" SelectionChanged="OnHealModeChanged" ToolTip.Tip="Content-Aware近似・Create Texture=粒状付加・Proximity=近傍優先">
+              <ComboBox x:Name="HealModeBox" Width="130" SelectedIndex="0" SelectionChanged="OnHealModeChanged" ToolTip.Tip="Content-Aware近似・Create Texture=粒状付加・Proximity=近傍優先">
                 <ComboBoxItem>Content-Aware</ComboBoxItem>
                 <ComboBoxItem>Create Texture</ComboBoxItem>
                 <ComboBoxItem>Proximity</ComboBoxItem>
@@ -716,7 +721,7 @@
               </ComboBox>
             </WrapPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
-              <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="52" Classes="dim" ToolTip.Tip="Wand許容差 0-255"/>
+              <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="Wand許容差 0-255"/>
               <Slider x:Name="WandToleranceSlider" Minimum="0" Maximum="255" Width="112" Value="32"/>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
