@@ -62,6 +62,19 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 - Simple preset（Brush既定・白黒・描く）・Persona弱移植（描く/整える/出す）・Contextual頭欄（新工具2種の題＋助言追加）
 - 不採用維持：生成AI Fill・ML自動切抜・Vision系・MSIX署名
 
+## P2表現拡張（t_ceec521c・2026-09-21・WORLD_BEST_PAINT §4 P2）
+- Mixer筆（Wet・Load・Mix三係数・対角stroke破壊適用・Undo可・Smudgeとは別物。他8 engine分化は対象外）
+- 対称描画（鏡像複製層・MirrorH/V/HV・Kaleido4）・Wrap-Around（2x2 tiling preview書出・画素不変・view状態）・透視助手（消失点設定＋選択ベクター線の15°放射線吸着）
+- mesh変形（粗格子ワープ・格子点数・膨らみ・選択層へ破壊適用）・puppet（ハンドル1点のガウス減衰移動・mesh上位の入口）
+- History保存（操作名＋時刻＋層数・上限200・画素なし・.comp v9往復）・macro（Brightness/Contrast/Invert・上限64・選択層へ再生・v9往復）
+- workspace preset（Persona・Simpleの保存・復元）・Python API下地（文書要約JSON＋操作stub生成・interpreterは将来）
+- HDR（露出EV・Reinhard ToneMap・選択層へ破壊適用・HdrEvはv9保存）・ICC profile近似3種（文書保存・v9）・Gamut窓3種（session-only）
+- Export slice（現選択の登録・PNG書出・上限64・v9往復）・compound mask（現選択とspare channel先頭の集合演算・選択へ）・blend range（下地輝度変調・Compose/DrawのCPU合成路で実効・層行[BR]・v9往復）
+- 3D素材の置き場（手続きprimitive・Box/Sphere/Cylinder・新規層へ）・動画層の下地（frame列・上限256・session-only・onion preview・連番manifest・timeline本格は対象外）
+- AI補助（手動下位・opt-inのみ：羽化refine・背景hint提案・保護noise・Undoで可逆。自動切抜・生成Fill・Vision系は対象外維持）
+- 計画書保存開封は .comp v9（新規保存v9・v1-8読込維持・history/slice/macro/blendRange/icc/hdrEv往復・検証・原子置換）
+- 不採用維持：生成AI Fill・ML自動切抜・Vision系・MSIX署名・store配布・HEIC/TIFF復号器
+
 ## 未移植（×・実用レベル後の次フェーズ・すべてUIで「未対応」明示済み）
 - 詳細は TOOLS_PARITY.md の×7件を参照（SubjectRemoval/GuidedMatte/調整シートUI残件はいずれも無効ボタン＋ツールチップ。P0でCurves.../Levels.../Hue.../Filter...対話を追加済み）。
 - Merge Downはフォルダ内・クリップ込・覆面焼込・trim対応へ拡張済み（旧v1制限のクリップ注記は解消）。複数選択UIはP0で完成（LayerList複数選択＋MergeSel＋Group複数対応・ドラッグ並替は残件）。

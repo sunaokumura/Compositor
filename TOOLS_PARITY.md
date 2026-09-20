@@ -113,3 +113,18 @@ Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42
 - 不採用項目（生成AI Fill・ML自動切抜・Vision系・MSIX署名）は対象外維持。Time-lapse連番画像・9筆engine分化・mesh/puppet・History保存・macro・HDR/ICC・Export sliceはP2へ。
 - 検証証跡: dotnet build Release 0 errors（CS0618旧ダイアログ警告のみ・既存）。dotnet test Release 全合格（P1NonDestructiveTests 20件含む・内 headless E2E 1件: Import→AdjBrush→Live→QuickShape判定→Vector→channel/QuickMask→Timelapse→PNG/JPEG復号→.comp v8往復）。実機GUI目視はWSL headless制約のため後続実機工程に引継ぎ。
 - Apps反映: 利用者許可なく禁止のため未実施。
+
+## P2実装証跡（t_ceec521c・2026-09-21・WORLD_BEST_PAINT §4 P2）
+- 追加engine: src/Compositor.Avalonia/P2Expression.cs（MixerOps三係数・SymmetryOps・WrapOps・PerspectiveOps・MeshOps/PuppetOps・HistoryOps/MacroOps・WorkspaceOps/PythonApiStub・HdrOps/IccOps/GamutMaskOps・SliceOps/CompoundMaskOps/BlendRangeOps/P2Blend・Proxy3DOps/VideoLayerOps・AiAssistOps）。UI配線: P2ExpressionUI.cs（新規partial）＋MainWindow.axaml（新規x:Name 16件＝P2ButtonsPanel＋対話鍵15・既存と操作子名は不変・計130件）＋MainWindow.axaml.cs（層行[BR]標識）＋DocumentModel（Layer blend range・Document P2状態・Compose/DrawのCPU合成路へblend range変調）＋ProjectFormat（.comp v9）。
+- 9 engine分化の入口: Mixer筆（Wet・Load・Mix・対角stroke破壊適用・Undo可・Smudgeとは別物）。他8 engine分化は対象外（Skia CPU上の重量化のため・記録のみ）。
+- Wrap-Around・対称・透視助手: 対称は鏡像複製層（MirrorH/V/HV・Kaleido4）・Wrapは2x2 tiling preview書出（画素不変・view状態）・透視は消失点設定＋選択ベクター線の15°放射線吸着。
+- mesh→puppet: 粗格子ワープ（格子点数・膨らみ・CPU逆写像・選択層へ破壊適用）・puppetはハンドル1点のガウス減衰移動（mesh上位の入口）。
+- History保存・macro: Historyは操作名＋時刻＋層数（上限200・画素なし・.comp v9で往復）・macroは単純調整op（Brightness/Contrast/Invert・上限64・選択層へ再生・v9往復）。
+- workspace preset・Python API下地: presetはPersona・Simpleの保存・復元（JSON・temp経由）・Python APIは文書要約JSON＋操作stub生成（interpreter組込は将来）。
+- HDR・ICC・Gamut: 露出EV適用・Reinhard ToneMap（選択層へ破壊適用・HdrEvはv9保存）・ICC profile近似3種（文書に保存・v9）・Gamut窓3種（session-only・前景色判定）。
+- Export slice・compound mask・blend range: sliceは現選択の登録・PNG書出（上限64・v9往復）・compoundは現選択とspare channel先頭の集合演算（Union/Intersect/Subtract/Xor・選択へ）・blend rangeは下地輝度変調（Lo/Hi/Feather・Compose/DrawのCPU合成路で実効・層行[BR]・v9往復）。
+- 3D素材・動画層: 3Dは手続きprimitive（Box/Sphere/Cylinder・新規層へ・本格3Dは対象外）・動画層はframe列（上限256・session-only）＋onion preview＋連番manifest（timeline本格は対象外）。
+- AI系（手動下位・opt-inのみ）: 羽化refine・背景hint提案（適用は確認チェックつきのみ）・保護noise（強度・seed固定・Undoで可逆）。自動切抜・生成Fill・Vision系は対象外維持。
+- .comp v9: 新規保存はversion 9（history・slice・macro・blendRange・icc・hdrEv）。v1-8読込維持（Validateは1-9受理・新fieldはv9要求）。
+- 検証証跡: dotnet build Release 0 errors（CS0618旧ダイアログ警告のみ・既存＋新規P2対話分）。dotnet test Release 全合格（P2ExpressionTests 39件含む・内 headless E2E 1件: Import→Mixer→対称複製→Mesh→Slice→HDR→macro→v9往復→PNG/JPEG復号）。実機GUI目視はWSL headless制約のため後続実機工程に引継ぎ。
+- Apps反映: 利用者許可なく禁止のため未実施。

@@ -53,6 +53,9 @@ public class Layer
     // P1 ベクター線 (CLIP STUDIO ベクター層の考え): ラスタ焼成後も編集用データを保持。
     public VectorStroke Vector;
     public bool IsVectorLayer;
+    // P2 blend range (Affinityの考え): 下地輝度での層の効き具合。
+    public bool UseBlendRange;
+    public double BlendLo, BlendHi = 1, BlendFeather;
 
     public SKRect Bounds => Bitmap == null ? SKRect.Empty : SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
     public bool HitTest(SKPoint p) => Bitmap != null && Bounds.Contains(p.X, p.Y);
@@ -80,6 +83,7 @@ public class LayerSnapshot
         public float Rotation; public bool FlipH, FlipV;
         public float Brightness, Contrast, Saturation, Blur; public bool Invert;
         public bool IsAdjustmentLayer; public LayerAdjustment Adjustment;
+        public bool UseBlendRange; public double BlendLo, BlendHi, BlendFeather;   // P2
     }
     public List<Item> Items = new();
     public int Width, Height;
@@ -107,7 +111,9 @@ public class LayerSnapshot
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
                 Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
                 Blur = l.Blur, Invert = l.Invert,
-                IsAdjustmentLayer = l.IsAdjustmentLayer, Adjustment = l.Adjustment?.Clone() });
+                IsAdjustmentLayer = l.IsAdjustmentLayer, Adjustment = l.Adjustment?.Clone(),
+                UseBlendRange = l.UseBlendRange, BlendLo = l.BlendLo, BlendHi = l.BlendHi,
+                BlendFeather = l.BlendFeather });
         return s;
     }
 
@@ -134,6 +140,8 @@ public class LayerSnapshot
             it.Layer.Brightness = it.Brightness; it.Layer.Contrast = it.Contrast;
             it.Layer.Saturation = it.Saturation; it.Layer.Blur = it.Blur; it.Layer.Invert = it.Invert;
             it.Layer.IsAdjustmentLayer = it.IsAdjustmentLayer; it.Layer.Adjustment = it.Adjustment?.Clone();
+            it.Layer.UseBlendRange = it.UseBlendRange; it.Layer.BlendLo = it.BlendLo;
+            it.Layer.BlendHi = it.BlendHi; it.Layer.BlendFeather = it.BlendFeather;
             doc.Layers.Add(it.Layer);
         }
     }
@@ -211,6 +219,19 @@ public class Document
     public bool TimelapseRecording;
     public PersonaKind Persona = PersonaKind.Paint;     // Persona弱移植 (描く/整える/出す)
     public bool SimpleMode;                             // Simple preset (初心者縮小)
+    // P2 表現拡張の文書状態 (.comp v9で永続するのは History・Macro・Slices・
+    // blendRange・IccProfile・HdrEv のみ。他は session-only で肥大防止):
+    public SymmetryMode Symmetry;                       // 対称描画 (view 状態・保存対象外)
+    public bool WrapEnabled;                            // Wrap-Around preview (view 状態・保存対象外)
+    public SKPoint VanishingPoint;                      // 透視消失点 (session-only)
+    public bool HasVanishingPoint;                      // session-only
+    public List<HistoryEntry> History = new();          // P2 v9 永続 (上限200・画素なし)
+    public List<MacroStep> Macro = new();               // P2 v9 永続 (上限64)
+    public List<Slice> Slices = new();                  // P2 v9 永続 (上限64)
+    public IccProfileKind IccProfile;                   // P2 v9 永続
+    public double HdrEv;                                // P2 v9 永続 (-8..8・0=off)
+    public GamutKind Gamut = GamutKind.Full;            // session-only
+    public List<SKBitmap> VideoFrames = new();          // 動画層 frame列 (session-only)
     /// <summary>Mark the document saved (Mac history.markSaved subset).</summary>
     public void MarkSaved() => IsModified = false;
     /// <summary>Geometry limit shared with NewCanvas (Mac CanvasDocument.validDimension).</summary>
@@ -236,10 +257,12 @@ public class Document
     public void RaiseChanged() => Changed?.Invoke();
 
     /// <summary>Composite all visible layers bottom-up into a flat bitmap of doc size.
-    /// Adjustment layers apply to the composite of the layers below (Mac LayerAdjustment).</summary>
+    /// Adjustment layers apply to the composite of the layers below (Mac LayerAdjustment).
+    /// P2 blend range layers also route through the CPU path.</summary>
     public SKBitmap Compose()
     {
-        if (Layers.Any(l => l is { Visible: true, IsAdjustmentLayer: true, Adjustment: not null }))
+        if (Layers.Any(l => l is { Visible: true, IsAdjustmentLayer: true, Adjustment: not null })
+            || Layers.Any(l => l is { Visible: true, UseBlendRange: true } && !l.IsGroup && !l.IsAdjustmentLayer))
             return ComposeWithAdjustments();
         var bmp = new SKBitmap(Width, Height, SKColorType.Bgra8888, SKAlphaType.Premul);
         using var canvas = new SKCanvas(bmp);
@@ -250,7 +273,8 @@ public class Document
     public bool HasAdjustmentLayers =>
         Layers.Any(l => l is { Visible: true, IsAdjustmentLayer: true, Adjustment: not null });
 
-    /// <summary>CPU composite honoring adjustment layers (non-destructive, Undo-safe).</summary>
+    /// <summary>CPU composite honoring adjustment layers (non-destructive, Undo-safe).
+    /// P2 blend range layers modulate by underlying luminance here too.</summary>
     public SKBitmap ComposeWithAdjustments()
     {
         var acc = new SKBitmap(Math.Max(1, Width), Math.Max(1, Height), SKColorType.Bgra8888, SKAlphaType.Premul);
@@ -275,6 +299,17 @@ public class Document
             }
             else if (layer.ClipSourceId is Guid s && byId.TryGetValue(s, out var b))
                 DrawClipped(canvas, this, layer, b, 1f);
+            else if (layer is { Visible: true, UseBlendRange: true })
+            {
+                // P2: blend range (Affinityの考え) は下地輝度で変調する。
+                var range = new BlendRange { Lo = layer.BlendLo, Hi = layer.BlendHi, Feather = layer.BlendFeather };
+                if (!range.IsValid) { DrawLayer(canvas, layer, 1f); continue; }
+                using var before = new SKBitmap(acc.Width, acc.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                using (var c2 = new SKCanvas(before))
+                    c2.DrawBitmap(acc, 0, 0);
+                DrawLayer(canvas, layer, 1f);
+                P2Blend.BlendRangeModulate(acc, before, range, Width, Height);
+            }
             else
                 DrawLayer(canvas, layer, 1f);
         }
@@ -283,10 +318,10 @@ public class Document
 
     public void Draw(SKCanvas canvas, float zoom, SKRect? viewportDocRect = null)
     {
-        if (HasAdjustmentLayers)
+        if (HasAdjustmentLayers
+            || Layers.Any(l => l is { Visible: true, UseBlendRange: true } && !l.IsGroup && !l.IsAdjustmentLayer))
         {
-            // Adjustment layers need readback of the composite below: render at doc
-            // resolution first, then blit scaled (preview path; Compose stays exact).
+            // 調整層・P2 blend range層は文書解像度で先に合成してから blit (preview路・Composeと一致)。
             using var acc = ComposeWithAdjustments();
             canvas.DrawBitmap(acc, new SKRect(0, 0, Width * zoom, Height * zoom));
             return;

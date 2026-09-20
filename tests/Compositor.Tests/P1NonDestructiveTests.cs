@@ -343,7 +343,7 @@ public class P1CompV8Tests
         {
             ProjectFormat.Save(doc, dir);
             string json = File.ReadAllText(Path.Combine(dir, "manifest.json"));
-            Assert.Contains("\"version\": 8", json);
+            Assert.Contains($"\"version\": {ProjectFormat.CurrentVersion}", json);
             var loaded = ProjectFormat.Load(dir);
             Assert.Single(loaded.Layers);
         }

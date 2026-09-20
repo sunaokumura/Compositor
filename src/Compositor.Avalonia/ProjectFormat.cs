@@ -1,6 +1,7 @@
 // Compositor — project save/open (.comp package, Mac ProjectStore.swift subset).
 // Package layout: <name>.comp/ manifest.json + images/<layer UUID>.png + images/<layer UUID>.mask.png
-// Manifest versions 1-8 readable, new saves always version 8 (P1: Live filter kinds + vector + spare channels).
+// Manifest versions 1-9 readable, new saves always version 9 (P2: history + slices +
+// macro + blendRange + icc/hdrEv。video frames・3D・mesh係数・対称・VPは session-only)。
 // PNG assets only (Mac parity); atomic replace via sibling temp dir + move.
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -52,6 +53,35 @@ public class ManifestChannel
     public int height { get; set; }
 }
 
+public class ManifestHistory
+{
+    public string time { get; set; } = "";
+    public string action { get; set; } = "";
+    public int layers { get; set; }
+}
+
+public class ManifestSlice
+{
+    public string name { get; set; } = "";
+    public int x { get; set; }
+    public int y { get; set; }
+    public int w { get; set; }
+    public int h { get; set; }
+}
+
+public class ManifestMacro
+{
+    public string op { get; set; } = "";
+    public double value { get; set; }
+}
+
+public class ManifestBlendRange
+{
+    public double lo { get; set; }
+    public double hi { get; set; } = 1;
+    public double feather { get; set; }
+}
+
 public class ManifestLayer
 {
     public Guid id { get; set; }
@@ -73,12 +103,13 @@ public class ManifestLayer
     public ManifestShape shape { get; set; }
     public ManifestVector vector { get; set; }   // P1 v8: ベクター線の編集データ
     public bool? isVector { get; set; }
+    public ManifestBlendRange blendRange { get; set; }   // P2 v9: blend range
 }
 
 public class ProjectManifest
 {
     public string format { get; set; } = "com.compositor.project";
-    public int version { get; set; } = 8;
+    public int version { get; set; } = 9;
     public string colorSpace { get; set; } = "sRGB";
     public double? resolution { get; set; }
     public Guid documentID { get; set; }
@@ -87,16 +118,21 @@ public class ProjectManifest
     public Guid? activeLayerID { get; set; }
     public List<ManifestLayer> layers { get; set; } = new();
     public List<ManifestChannel> channels { get; set; }   // P1 v8: spare channel
+    public List<ManifestHistory> history { get; set; }    // P2 v9: History保存
+    public List<ManifestSlice> slices { get; set; }       // P2 v9: Export slice
+    public List<ManifestMacro> macro { get; set; }        // P2 v9: macro
+    public string icc { get; set; }                       // P2 v9: ICC profile名
+    public double? hdrEv { get; set; }                    // P2 v9: HDR露出
 }
 #endregion
 
 /// <summary>Project save/open engine (Mac ProjectStore.swift + EditorSession+Projects.swift subset).
-/// Layers/groups/masks/clips/adjustments/shapes/vectors/channels round-trip; undo history and viewport stay session-only.
-/// Manifest versions 1-8 readable, new saves always version 8 (P1: Live filter kinds + vector + spare channels).</summary>
+/// Layers/groups/masks/clips/adjustments/shapes/vectors/channels/history/slices/macros round-trip; undo history and viewport stay session-only.
+/// Manifest versions 1-9 readable, new saves always version 9 (P2: history + slices + macro + blendRange + icc/hdrEv).</summary>
 public static class ProjectFormat
 {
     public const string FormatId = "com.compositor.project";
-    public const int CurrentVersion = 8;
+    public const int CurrentVersion = 9;
     public const long MaxManifestBytes = 4L * 1024 * 1024;
     public const long MaxAssetBytes = 512L * 1024 * 1024;
     public const int MaxSide = 30_000;
@@ -232,6 +268,12 @@ public static class ProjectFormat
                     points = l.Vector.Points.Select(p => new ManifestVectorPoint { x = p.X, y = p.Y }).ToList(),
                 };
             }
+            if (l.UseBlendRange)   // P2 v9 blend range
+            {
+                var br = new BlendRange { Lo = l.BlendLo, Hi = l.BlendHi, Feather = l.BlendFeather };
+                if (!br.IsValid) throw new ProjectFormatException($"Bad blend range on '{l.Name}'.");
+                rec.blendRange = new ManifestBlendRange { lo = l.BlendLo, hi = l.BlendHi, feather = l.BlendFeather };
+            }
             m.layers.Add(rec);
         }
         if (doc.SpareChannels.Count > 0)   // P1 v8 spare channel
@@ -251,6 +293,44 @@ public static class ProjectFormat
                 });
             }
         }
+        if (doc.History.Count > 0)   // P2 v9 History保存 (上限200・画素なし)
+        {
+            if (doc.History.Count > HistoryOps.MaxEntries) throw new ProjectFormatException("Too many history entries.");
+            m.history = new List<ManifestHistory>();
+            foreach (var e in doc.History)
+            {
+                if (string.IsNullOrWhiteSpace(e.Action) || e.Action.Length > 1024)
+                    throw new ProjectFormatException("Bad history entry.");
+                m.history.Add(new ManifestHistory { time = e.Time.ToString("O"), action = e.Action, layers = e.Layers });
+            }
+        }
+        if (doc.Slices.Count > 0)   // P2 v9 Export slice
+        {
+            if (doc.Slices.Count > SliceOps.MaxSlices) throw new ProjectFormatException("Too many slices.");
+            m.slices = new List<ManifestSlice>();
+            foreach (var s in doc.Slices)
+            {
+                SliceOps.Validate(s, doc.Width, doc.Height);
+                m.slices.Add(new ManifestSlice { name = s.Name, x = s.X, y = s.Y, w = s.W, h = s.H });
+            }
+        }
+        if (doc.Macro.Count > 0)   // P2 v9 macro
+        {
+            if (doc.Macro.Count > MacroOps.MaxSteps) throw new ProjectFormatException("Too many macro steps.");
+            m.macro = new List<ManifestMacro>();
+            foreach (var s in doc.Macro)
+            {
+                if (!Enum.IsDefined(s.Op)) throw new ProjectFormatException("Bad macro op.");
+                m.macro.Add(new ManifestMacro { op = s.Op.ToString(), value = s.Value });
+            }
+        }
+        if (doc.IccProfile != IccProfileKind.SRGB) m.icc = doc.IccProfile.ToString();   // P2 v9
+        if (Math.Abs(doc.HdrEv) > 1e-9)
+        {
+            if (!double.IsFinite(doc.HdrEv) || doc.HdrEv is < -8 or > 8)
+                throw new ProjectFormatException("Bad HDR EV.");
+            m.hdrEv = doc.HdrEv;
+        }
         Validate(m);
         return m;
     }
@@ -260,7 +340,7 @@ public static class ProjectFormat
     public static void Validate(ProjectManifest m)
     {
         if (m.format != FormatId) throw new ProjectFormatException("Not a Compositor project.");
-        if (m.version is < 1 or > 8) throw new ProjectFormatException($"Unsupported version {m.version} (supports 1-8).");
+        if (m.version is < 1 or > 9) throw new ProjectFormatException($"Unsupported version {m.version} (supports 1-9).");
         if (m.colorSpace != "sRGB") throw new ProjectFormatException("colorSpace must be sRGB.");
         if (m.resolution is double r && (!double.IsFinite(r) || r < 1 || r > 9600))
             throw new ProjectFormatException("Bad resolution.");
@@ -318,6 +398,12 @@ public static class ProjectFormat
                 || l.adjustmentKind == nameof(AdjustmentKind.GaussBlur) || l.adjustmentKind == nameof(AdjustmentKind.MotionBlur))
                 && m.version < 8)
                 throw new ProjectFormatException($"Live filter '{l.name}' needs version 8.");
+            if (l.blendRange != null)   // P2 v9 blend range
+            {
+                if (m.version < 9) throw new ProjectFormatException($"Blend range on '{l.name}' needs version 9.");
+                var br = new BlendRange { Lo = l.blendRange.lo, Hi = l.blendRange.hi, Feather = l.blendRange.feather };
+                if (!br.IsValid) throw new ProjectFormatException($"Bad blend range on '{l.name}'.");
+            }
         }
         if (m.channels != null && m.channels.Count > 0)   // P1 v8 spare channel
         {
@@ -339,6 +425,41 @@ public static class ProjectFormat
         ValidateClips(m);
         if (m.version < 5 && m.layers.Any(l => l.maskSourceID != null))
             throw new ProjectFormatException("maskSourceID needs version 5+.");
+        if ((m.history != null && m.history.Count > 0) || (m.slices != null && m.slices.Count > 0)
+            || (m.macro != null && m.macro.Count > 0) || m.icc != null || m.hdrEv != null)
+        {
+            // P2 v9: history・slice・macro・icc・hdrEv
+            if (m.version < 9) throw new ProjectFormatException("History/slices/macro/icc/hdr needs version 9+.");
+            if (m.history != null)
+            {
+                if (m.history.Count > HistoryOps.MaxEntries) throw new ProjectFormatException("Too many history entries.");
+                foreach (var e in m.history)
+                    if (string.IsNullOrWhiteSpace(e.action) || e.action.Length > 1024)
+                        throw new ProjectFormatException("Bad history entry.");
+            }
+            if (m.slices != null)
+            {
+                if (m.slices.Count > SliceOps.MaxSlices) throw new ProjectFormatException("Too many slices.");
+                foreach (var s in m.slices)
+                {
+                    if (string.IsNullOrWhiteSpace(s.name) || s.name.Length > 256)
+                        throw new ProjectFormatException("Bad slice name.");
+                    if (s.w < 1 || s.h < 1 || s.x < 0 || s.y < 0 || s.x + s.w > m.width || s.y + s.h > m.height)
+                        throw new ProjectFormatException($"Bad slice rect '{s.name}'.");
+                }
+            }
+            if (m.macro != null)
+            {
+                if (m.macro.Count > MacroOps.MaxSteps) throw new ProjectFormatException("Too many macro steps.");
+                foreach (var s in m.macro)
+                    if (!Enum.TryParse<MacroOp>(s.op, out _) || (s.op != nameof(MacroOp.Invert) && (s.value is < -100 or > 100 || !double.IsFinite(s.value))))
+                        throw new ProjectFormatException("Bad macro step.");
+            }
+            if (m.icc != null && !Enum.TryParse<IccProfileKind>(m.icc, out _))
+                throw new ProjectFormatException("Bad ICC profile.");
+            if (m.hdrEv is double ev && (!double.IsFinite(ev) || ev is < -8 or > 8))
+                throw new ProjectFormatException("Bad HDR EV.");
+        }
         if (m.version == 1 && m.layers.Any(l => l.parentID != null || l.isGroup == true))
             throw new ProjectFormatException("Version 1 cannot carry groups.");
         if (m.activeLayerID is Guid a && !ids.Contains(a))
@@ -622,6 +743,13 @@ public static class ProjectFormat
                 l.Vector = vs;
                 l.IsVectorLayer = true;
             }
+            if (rec.blendRange != null)   // P2 v9 blend range
+            {
+                var br = new BlendRange { Lo = rec.blendRange.lo, Hi = rec.blendRange.hi, Feather = rec.blendRange.feather };
+                if (!br.IsValid) throw new ProjectFormatException($"Bad blend range on '{rec.name}'.");
+                l.UseBlendRange = true;
+                l.BlendLo = br.Lo; l.BlendHi = br.Hi; l.BlendFeather = br.Feather;
+            }
             doc.Layers.Add(l);
             byId[l.Id] = l;
         }
@@ -647,6 +775,28 @@ public static class ProjectFormat
                 doc.SpareChannels.Add(new SpareChannel { Name = c.name, Mask = gray, W = c.width, H = c.height });
             }
         }
+        if (m.history != null)   // P2 v9 History保存
+            foreach (var e in m.history)
+            {
+                if (!DateTime.TryParse(e.time, null, System.Globalization.DateTimeStyles.RoundtripKind, out var t))
+                    t = DateTime.UtcNow;
+                doc.History.Add(new HistoryEntry { Time = t, Action = e.action ?? "", Layers = e.layers });
+            }
+        if (m.slices != null)   // P2 v9 Export slice
+            foreach (var s in m.slices)
+                doc.Slices.Add(new Slice { Name = s.name, X = s.x, Y = s.y, W = s.w, H = s.h });
+        if (m.macro != null)   // P2 v9 macro
+            foreach (var s in m.macro)
+            {
+                if (!Enum.TryParse<MacroOp>(s.op, out var op)) throw new ProjectFormatException("Bad macro step.");
+                doc.Macro.Add(new MacroStep { Op = op, Value = s.value });
+            }
+        if (m.icc != null)   // P2 v9 ICC
+        {
+            if (!Enum.TryParse<IccProfileKind>(m.icc, out var icc)) throw new ProjectFormatException("Bad ICC profile.");
+            doc.IccProfile = icc;
+        }
+        if (m.hdrEv is double hev) doc.HdrEv = hev;   // P2 v9 HDR
         doc.MarkSaved();
         return doc;
     }

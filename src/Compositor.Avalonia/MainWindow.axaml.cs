@@ -243,8 +243,9 @@ public partial class MainWindow : Window
                 string shape = l.Shape != null ? "[S]" : "";
                 string adj = l.IsAdjustmentLayer ? (LiveLayerOps.IsLiveKind(l.Adjustment?.Kind ?? AdjustmentKind.Hsv) ? "[Live] " : "[A] ") : "";   // P1 Live標識
                 string vec = l.IsVectorLayer ? "[V] " : "";   // P1 ベクター標識
+                string br = l.UseBlendRange ? "[BR] " : "";   // P2 blend range標識
                 string solo = doc.SoloLayerId == l.Id ? "[Solo] " : "";   // P0 Solo 標識
-                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{solo}{kind}{adj}{vec}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
+                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{solo}{kind}{adj}{vec}{br}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
             }
             if (LayerList.ItemCount > 0)
             {
