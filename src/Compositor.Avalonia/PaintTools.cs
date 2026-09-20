@@ -456,9 +456,9 @@ public static class Eyedropper
             return flat.GetPixel(x, y);
         }
         if (activeLayer?.Bitmap == null) return SKColors.Black;
-        float s = Math.Max(1e-6f, activeLayer.Scale);
-        int lx = (int)MathF.Floor((docPoint.X - activeLayer.Position.X) / s);
-        int ly = (int)MathF.Floor((docPoint.Y - activeLayer.Position.Y) / s);
+        float sx = Math.Max(1e-6f, activeLayer.ScaleX), sy = Math.Max(1e-6f, activeLayer.ScaleY);
+        int lx = (int)MathF.Floor((docPoint.X - activeLayer.Position.X) / sx);
+        int ly = (int)MathF.Floor((docPoint.Y - activeLayer.Position.Y) / sy);
         if (lx < 0 || ly < 0 || lx >= activeLayer.Bitmap.Width || ly >= activeLayer.Bitmap.Height) return SKColors.Black;
         return activeLayer.Bitmap.GetPixel(lx, ly);
     }

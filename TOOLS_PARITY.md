@@ -1,4 +1,4 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_f04eebff時点）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_78505b8d時点）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
@@ -25,11 +25,12 @@
 ## 変形系
 | Mac | Windows | 状態 |
 |---|---|---|
-| LayerTransform.swift（回転/反転/サンプリング） | Layer.Rotation/FlipH/FlipV（非破壊・Draw時適用・Undo可） | △（自由拡縮の数値指定・サンプリング選択なし） |
-| LayerFlip.swift | Flip H/Vボタン | ○ |
-| Distort.swift（歪み・パース） | — | ×（Distort (未対応)バッジ） |
-| CanvasSize.swift | — | × |
-| Crop.swift | — | × |
+| LayerTransform.swift（回転/反転/サンプリング） | Layer.ScaleX/ScaleY＋Rotation/FlipH/FlipV（非破壊・Draw時適用・Undo可）＋数値直接入力（X/Y/W/H/°・比率固定・矢印nudge）＋Sampling選択（Nearest/Smooth/High） | ○（複数層グループ・スナップなし） |
+| LayerFlip.swift | Flip H/Vボタン＋Flip Canvas H/V（全層・選択範囲ミラー・Undo可） | ○ |
+| Distort.swift（歪み・パース） | DistortWarp（角掴み歪み・Shift軸固定・確定/取消・CPU逆写像warp・Flip考慮）＋T工具 | ○（live画素previewは枠表示のみ・マスク連動なし） |
+| CanvasSize.swift | CanvasSizeDraft（単位/相対/lock）＋CanvasSizeOptions（アンカー/拡張色・底層追加）＋ダイアログ | ○ |
+| Crop.swift | CropGeometry/CropDrag（対称切抜・確定/取消・Space移動・比率）＋C工具 | ○（edge snapなし） |
+| ImageSizeSheet.swift（画像寸法） | ImageSizeダイアログ（lock・resample・Sampling・解像度のみ変更は受理） | ○ |
 
 ## 調整系
 | Mac | Windows | 状態 |
@@ -63,6 +64,6 @@
 | ProjectWorkspace.swift / EditorSession+Projects.swift / EditorSession.swift | ドキュメントタブ（複数Doc切替・タブ毎Undo） | △（プロジェクト保存なし） |
 
 ## 集計
-- ○ 8件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / （部分含め実用中核）
-- △ 16件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・変形・調整・タブ等が実用サブセットで動作
-- × 17件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（ContentFill/SubjectRemoval/Distort/Curves/Levels/GradientMap等。CloneStamp/Heal/Smudge/Lasso/MagicWandは対応済みのためバッジ解除）
+- ○ 12件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / LayerTransform（数値入力・Sampling含む） / Distort / CanvasSize / Crop / ImageSize（＋部分含め実用中核）
+- △ 15件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作
+- × 14件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（ContentFill/SubjectRemoval/Curves/Levels/GradientMap等。CloneStamp/Heal/Smudge/Lasso/MagicWand/Distort/Crop/CanvasSizeは対応済みのためバッジ解除）

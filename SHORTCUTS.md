@@ -15,6 +15,8 @@
 | M | Marquee（矩形/楕円切替） | Shift正方形・Alt中心・小クリックは解除扱い |
 | L | Lasso（自由/多角切替） | Enter/ダブルクリック確定・Esc取消 |
 | W | Magic Wand | Tolerance・Contiguous・All Layers設定 |
+| C | Crop | Drag枠作成・Alt対称・Space移動・Enter確定・Esc取消 |
+| T | Distort（自由変形・歪み） | 角掴み歪み・Shift軸固定・Enter確定・Esc取消 |
 | V | Move | 選択内Drag=枠移動・Ctrl+Drag=画素移動・Alt+Drag=複写 |
 | H | Hand | （スクロール任せ・Move同等） |
 | [ / ] | ブラシサイズ -4 / +4 | 工具頭欄にØ表示 |
@@ -32,11 +34,10 @@
 | Ctrl+O | Import |
 | Ctrl+E | Export PNG |
 | Ctrl+D | 選択解除 |
-| Enter | 投繩確定・画素移動確定 |
-| Esc | 投繩取消・画素移動取消（切出しをUndo復元）・選択解除 |
+| Enter | 投繩確定・画素移動確定・Crop/Distort確定（各工具時） |
+| Esc | 投繩取消・画素移動取消（切出しをUndo復元）・Crop/Distort取消・選択解除 |
 | Del | 選択あり=範囲画素消去・選択なし=レイヤー削除 |
 | ←→↑↓（Shiftで10px） | 選択レイヤー微調整（nudge・Undo可） |
 
 ## 未割当（Mac/Photoshopにあるが本版では対象外）
-- Ctrl+T（自由変形）→ Rotate/Flipボタンで代替、Distortは未対応バッジ
-- Shift+Ctrl+C（結合コピー）→ 未対応（レイヤー単位コピーのみ）
+- 結合コピー（Shift+Ctrl+C）→ 未対応（レイヤー単位コピーのみ）

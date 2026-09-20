@@ -27,7 +27,7 @@ public partial class MainWindow : Window
     readonly List<Document> openDocs = new();
     bool updatingTabs;
 
-    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand }
+    enum Tool { Move, Hand, Brush, Eraser, Clone, Heal, Smudge, Eyedropper, Marquee, Lasso, Polygon, Wand, Crop, Distort }
     Tool currentTool = Tool.Move;
     List<SKPoint> strokePoints;       // active brush stroke (layer-pixel space)
     // --- paint settings (Mac BrushSettings subset) ---
@@ -168,7 +168,7 @@ public partial class MainWindow : Window
             {
                 OpacitySlider.Value = sel.Opacity * 100;
                 OpacityLabel.Text = $"{sel.Opacity * 100:F0}%";
-                ScaleSlider.Value = sel.Scale * 100;
+                ScaleSlider.Value = Math.Clamp(sel.ScaleX * 100, ScaleSlider.Minimum, ScaleSlider.Maximum);
                 VisibleCheck.IsChecked = sel.Visible;
                 LockCheck.IsChecked = sel.Locked;
                 RenameBox.Text = sel.Name;
@@ -184,6 +184,7 @@ public partial class MainWindow : Window
                 BlurLabel.Text = $"{sel.Blur:F1}";
                 int idx = Array.FindIndex(BlendModes, b => b.Mode == sel.Blend);
                 BlendBox.SelectedIndex = idx < 0 ? 0 : idx;
+                SyncTransformPanel(sel);
             }
             finally { updatingList = false; }
         }
@@ -243,6 +244,7 @@ public partial class MainWindow : Window
             doc.Draw(canvas, zoom, new SKRect(0, 0, doc.Width, doc.Height));
             DrawSelectionOverlay(canvas);
             DrawDraftOverlay(canvas);
+            DrawTransformOverlays(canvas);
             DrawFloatingPreview(canvas);
             DrawBrushOverlay(canvas);
             surface.Flush();
@@ -433,6 +435,8 @@ public partial class MainWindow : Window
         if (floating != null) CommitFloating();   // 画素移動中は工具切替で確定
         if (t != Tool.Lasso) lassoDraft = null;
         if (t != Tool.Polygon) { polygonDraft = null; hasPolygonCursor = false; }
+        if (t != Tool.Distort) CancelDistortSilently();
+        if (t != Tool.Crop) cropDrag = null;
         currentTool = t;
         marqueeActive = false;
         strokePoints = null;
@@ -457,6 +461,12 @@ public partial class MainWindow : Window
             Tool.Lasso => ("Lasso (Freehand)", "Dragで投繩 · Enter/ダブルクリック確定 · Esc取消 · L=多角切替"),
             Tool.Polygon => ("Lasso (Polygonal)", "Clickで頂点 · Enter/ダブルクリック確定 · Esc取消 · L=自由切替"),
             Tool.Wand => ("Magic Wand", "Clickで類似色選択 · Tolerance/Contiguous設定 · Shift=加算 Alt=減算"),
+            Tool.Crop => ("Crop", cropRect == null
+                ? "Dragで枠作成 · Alt=対称 · Space=移動 · Enter確定 · Esc取消"
+                : $"枠 {cropRect.Value.Width:F0}×{cropRect.Value.Height:F0}px · Dragで移動/変形 · Enter確定 · Esc取消"),
+            Tool.Distort => ("Distort", distortCorners == null
+                ? "T: 層を選択して歪み開始"
+                : "角を掴んで歪み · Shift=軸固定 · Enter確定 · Esc取消"),
             _ => (t.ToString(), ""),
         };
         if (ToolHeaderTitle != null) ToolHeaderTitle.Text = title;
@@ -481,6 +491,8 @@ public partial class MainWindow : Window
         if (HealBtn != null) HealBtn.Background = currentTool == Tool.Heal ? on : off;
         if (SmudgeBtn != null) SmudgeBtn.Background = currentTool == Tool.Smudge ? on : off;
         if (EyedropperBtn != null) EyedropperBtn.Background = currentTool == Tool.Eyedropper ? on : off;
+        if (CropBtn != null) CropBtn.Background = currentTool == Tool.Crop ? on : off;
+        if (DistortBtn != null) DistortBtn.Background = currentTool == Tool.Distort ? on : off;
     }
 
     float BrushDiameter() => (float)(BrushSizeSlider?.Value ?? 24);
@@ -567,6 +579,8 @@ public partial class MainWindow : Window
     void OnToolHeal(object s, RoutedEventArgs e) => SetTool(Tool.Heal);
     void OnToolSmudge(object s, RoutedEventArgs e) => SetTool(Tool.Smudge);
     void OnToolEyedropper(object s, RoutedEventArgs e) => SetTool(Tool.Eyedropper);
+    void OnToolCrop(object s, RoutedEventArgs e) => SetTool(Tool.Crop);
+    void OnToolDistort(object s, RoutedEventArgs e) => BeginDistortTool();
 
     /// <summary>Shift=加算・Option/Alt=減算、なければ工具栏Mode (Mac selectionMode相当).</summary>
     SelectionMode EffectiveSelMode(KeyModifiers mods)
@@ -693,7 +707,8 @@ public partial class MainWindow : Window
         doc.Layers.Insert(i + 1, new Layer
         {
             Name = l.Name + " copy", Bitmap = copy, Visible = l.Visible, Opacity = l.Opacity,
-            Position = new SKPoint(l.Position.X + 10, l.Position.Y + 10), Scale = l.Scale,
+            Position = new SKPoint(l.Position.X + 10, l.Position.Y + 10),
+            ScaleX = l.ScaleX, ScaleY = l.ScaleY, Sampling = l.Sampling,
             Blend = l.Blend, Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
             Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
             Blur = l.Blur, Invert = l.Invert,
@@ -716,7 +731,8 @@ public partial class MainWindow : Window
             {
                 Bitmap = top.Bitmap, Visible = true, Opacity = top.Opacity,
                 Position = new SKPoint(top.Position.X - below.Position.X, top.Position.Y - below.Position.Y),
-                Scale = top.Scale, Blend = top.Blend, Rotation = top.Rotation,
+                ScaleX = top.ScaleX, ScaleY = top.ScaleY, Sampling = top.Sampling,
+                Blend = top.Blend, Rotation = top.Rotation,
                 FlipH = top.FlipH, FlipV = top.FlipV, Brightness = top.Brightness,
                 Contrast = top.Contrast, Saturation = top.Saturation, Blur = top.Blur, Invert = top.Invert,
             }, 1f);
@@ -1163,12 +1179,19 @@ public partial class MainWindow : Window
             case Key.W when mods == KeyModifiers.None: SetTool(Tool.Wand); e.Handled = true; break;
             case Key.V when mods == KeyModifiers.None: SetTool(Tool.Move); e.Handled = true; break;
             case Key.H when mods == KeyModifiers.None: SetTool(Tool.Hand); e.Handled = true; break;
+            case Key.C when mods == KeyModifiers.None: SetTool(Tool.Crop); e.Handled = true; break;
+            case Key.T when mods == KeyModifiers.None: BeginDistortTool(); e.Handled = true; break;
+            case Key.Space: cropSpaceHeld = true; e.Handled = true; break;
             case Key.Enter:
-                if (floating != null) CommitFloating();
+                if (currentTool == Tool.Distort && distortCorners != null) ApplyDistort();
+                else if (currentTool == Tool.Crop && cropRect != null) ApplyCrop();
+                else if (floating != null) CommitFloating();
                 else ConfirmDrafts();
                 e.Handled = true; break;
             case Key.Escape:
-                if (floating != null) CancelFloating();
+                if (currentTool == Tool.Distort && distortCorners != null) CancelDistort();
+                else if (currentTool == Tool.Crop && (cropRect != null || cropDrag != null)) CancelCrop();
+                else if (floating != null) CancelFloating();
                 else if (lassoDraft != null || polygonDraft != null) CancelDrafts();
                 else { doc.ClearSelection(); RenderCanvas(); Log("Deselect"); }
                 e.Handled = true; break;
@@ -1255,6 +1278,12 @@ public partial class MainWindow : Window
         base.OnKeyDown(e);
     }
 
+    protected override void OnKeyUp(KeyEventArgs e)
+    {
+        if (e.Key == Key.Space) cropSpaceHeld = false;
+        base.OnKeyUp(e);
+    }
+
     // ---------- canvas interaction (Move / Brush / Eraser / Marquee) ----------
 
     SKColor BrushPaintColor()
@@ -1283,12 +1312,12 @@ public partial class MainWindow : Window
     }
 
     SKPoint ToLayerPixel(Layer l, SKPoint docPoint) =>
-        new((docPoint.X - l.Position.X) / Math.Max(1e-6f, l.Scale),
-            (docPoint.Y - l.Position.Y) / Math.Max(1e-6f, l.Scale));
+        new((docPoint.X - l.Position.X) / Math.Max(1e-6f, l.ScaleX),
+            (docPoint.Y - l.Position.Y) / Math.Max(1e-6f, l.ScaleY));
 
     SKPoint ToDocPixel(Layer l, SKPoint layerPoint) =>
-        new(layerPoint.X * l.Scale + l.Position.X,
-            layerPoint.Y * l.Scale + l.Position.Y);
+        new(layerPoint.X * l.ScaleX + l.Position.X,
+            layerPoint.Y * l.ScaleY + l.Position.Y);
 
     void DoEyedropper(SKPoint docPoint)
     {
@@ -1312,9 +1341,9 @@ public partial class MainWindow : Window
     SKRect? SelectionLayerRect(Layer l)
     {
         if (doc.Selection is not SKRect r) return null;
-        float s = Math.Max(1e-6f, l.Scale);
-        return new SKRect((r.Left - l.Position.X) / s, (r.Top - l.Position.Y) / s,
-                          (r.Right - l.Position.X) / s, (r.Bottom - l.Position.Y) / s);
+        float sx = Math.Max(1e-6f, l.ScaleX), sy = Math.Max(1e-6f, l.ScaleY);
+        return new SKRect((r.Left - l.Position.X) / sx, (r.Top - l.Position.Y) / sy,
+                          (r.Right - l.Position.X) / sx, (r.Bottom - l.Position.Y) / sy);
     }
 
     SKRect? marqueePreview;
@@ -1373,6 +1402,22 @@ public partial class MainWindow : Window
                 return;
             }
             CommitFloating();
+        }
+
+        if (currentTool == Tool.Crop)
+        {
+            CropPressed(docPoint, mods);
+            RenderCanvas();
+            RefreshToolHeader();
+            e.Pointer.Capture((IInputElement)s);
+            return;
+        }
+        if (currentTool == Tool.Distort)
+        {
+            DistortPressed(docPoint);
+            RenderCanvas();
+            e.Pointer.Capture((IInputElement)s);
+            return;
         }
 
         if (currentTool == Tool.Marquee)
@@ -1616,6 +1661,17 @@ public partial class MainWindow : Window
     void OnCanvasPointerMoved(object s, PointerEventArgs e)
     {
         var docPoint = CanvasPoint(e, (Control)s);
+        if (currentTool == Tool.Crop && cropDrag != null)
+        {
+            CropMoved(docPoint, e.KeyModifiers);
+            RefreshToolHeader();
+            return;
+        }
+        if (currentTool == Tool.Distort && distortDragging)
+        {
+            DistortMoved(docPoint, e.KeyModifiers);
+            return;
+        }
         // ブラシ環ホバー追従 (ボタン押下なし・描画系工具のみ)
         if (strokePoints == null && !marqueeActive && floating == null && !floatingFrameDrag
             && currentTool is Tool.Brush or Tool.Eraser or Tool.Clone or Tool.Heal or Tool.Smudge)
@@ -1757,6 +1813,8 @@ public partial class MainWindow : Window
     void OnCanvasPointerReleased(object s, Avalonia.Input.PointerReleasedEventArgs e)
     {
         // UndoはPressed時にpush済み。ここではドラッグ状態の解除のみ。
+        if (currentTool == Tool.Crop && cropDrag != null) { CropReleased(); e.Pointer.Capture(null); return; }
+        if (currentTool == Tool.Distort && distortDragging) { DistortReleased(); e.Pointer.Capture(null); return; }
         if (marqueeActive)
         {
             marqueeActive = false;

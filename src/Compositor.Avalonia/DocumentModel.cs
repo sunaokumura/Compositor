@@ -11,7 +11,11 @@ public class Layer
     public bool Visible = true;
     public float Opacity = 1f;       // 0..1
     public SKPoint Position = new(0, 0);  // non-destructive offset in canvas px
-    public float Scale = 1f;              // non-destructive scale
+    public float ScaleX = 1f;             // non-destructive scale (Mac size.width / pixels)
+    public float ScaleY = 1f;             // non-destructive scale (Mac size.height / pixels)
+    /// <summary>Legacy uniform scale (kept for existing callers/tests): get = X, set = both.</summary>
+    public float Scale { get => ScaleX; set { ScaleX = value; ScaleY = value; } }
+    public LayerSampling Sampling = LayerSampling.High;   // Mac LayerSampling (draw-time interpolation)
     public bool Locked;
     public SKBlendMode Blend = SKBlendMode.SrcOver;
     // --- transform (non-destructive, Mac LayerTransform subset) ---
@@ -25,8 +29,10 @@ public class Layer
     public float Blur;               // Gaussian radius in layer px, 0 = off
     public bool Invert;              // PixelInvert equivalent
 
-    public SKRect Bounds => SKRect.Create(Position.X, Position.Y, Bitmap.Width * Scale, Bitmap.Height * Scale);
+    public SKRect Bounds => SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
     public bool HitTest(SKPoint p) => Bounds.Contains(p.X, p.Y);
+    public float DrawW => Bitmap == null ? 0 : Bitmap.Width * ScaleX;
+    public float DrawH => Bitmap == null ? 0 : Bitmap.Height * ScaleY;
 }
 
 /// <summary>Lightweight memento of layer stack state. Bitmaps are shared by reference
@@ -38,7 +44,8 @@ public class LayerSnapshot
         public Layer Layer;
         public SKBitmap BitmapRef;   // copy-on-write anchor: restore reassigns so pre-paint pixels survive Undo
         public string Name; public bool Visible; public bool Locked;
-        public float Opacity, Scale; public SKPoint Position; public SKBlendMode Blend;
+        public float Opacity, ScaleX, ScaleY; public SKPoint Position; public SKBlendMode Blend;
+        public LayerSampling Sampling;
         public float Rotation; public bool FlipH, FlipV;
         public float Brightness, Contrast, Saturation, Blur; public bool Invert;
     }
@@ -51,7 +58,8 @@ public class LayerSnapshot
         var s = new LayerSnapshot { Width = doc.Width, Height = doc.Height, DocName = doc.Name };
         foreach (var l in doc.Layers)
             s.Items.Add(new Item { Layer = l, BitmapRef = l.Bitmap, Name = l.Name, Visible = l.Visible, Locked = l.Locked,
-                Opacity = l.Opacity, Scale = l.Scale, Position = l.Position, Blend = l.Blend,
+                Opacity = l.Opacity, ScaleX = l.ScaleX, ScaleY = l.ScaleY, Position = l.Position, Blend = l.Blend,
+                Sampling = l.Sampling,
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
                 Brightness = l.Brightness, Contrast = l.Contrast, Saturation = l.Saturation,
                 Blur = l.Blur, Invert = l.Invert });
@@ -66,8 +74,8 @@ public class LayerSnapshot
         {
             it.Layer.Bitmap = it.BitmapRef;
             it.Layer.Name = it.Name; it.Layer.Visible = it.Visible; it.Layer.Locked = it.Locked;
-            it.Layer.Opacity = it.Opacity; it.Layer.Scale = it.Scale; it.Layer.Position = it.Position;
-            it.Layer.Blend = it.Blend;
+            it.Layer.Opacity = it.Opacity; it.Layer.ScaleX = it.ScaleX; it.Layer.ScaleY = it.ScaleY; it.Layer.Position = it.Position;
+            it.Layer.Blend = it.Blend; it.Layer.Sampling = it.Sampling;
             it.Layer.Rotation = it.Rotation; it.Layer.FlipH = it.FlipH; it.Layer.FlipV = it.FlipV;
             it.Layer.Brightness = it.Brightness; it.Layer.Contrast = it.Contrast;
             it.Layer.Saturation = it.Saturation; it.Layer.Blur = it.Blur; it.Layer.Invert = it.Invert;
@@ -159,8 +167,9 @@ public class Document
     {
         if (layer is not { Visible: true, Bitmap: not null } || layer.Opacity <= 0f) return true;
         if (layer.Rotation != 0 || layer.FlipH || layer.FlipV) return false; // transformed: conservative, no cull
+        if (layer.ScaleX != layer.ScaleY) return false;   // non-uniform: conservative, no cull
         float l = layer.Position.X, t = layer.Position.Y;
-        float r = l + layer.Bitmap.Width * layer.Scale, b = t + layer.Bitmap.Height * layer.Scale;
+        float r = l + layer.Bitmap.Width * layer.ScaleX, b = t + layer.Bitmap.Height * layer.ScaleY;
         return r <= vp.Left || l >= vp.Right || b <= vp.Top || t >= vp.Bottom;
     }
 
@@ -258,18 +267,20 @@ public class Document
         using var paint = new SKPaint();
         paint.Color = SKColors.White.WithAlpha((byte)Math.Round(layer.Opacity * 255));
         paint.BlendMode = layer.Blend;
+        paint.FilterQuality = SamplingUtil.ToQuality(layer.Sampling);
         if (NeedsAdjustmentFilter(layer))
             paint.ColorFilter = BuildAdjustmentFilter(layer);
         if (layer.Blur > 0)
             paint.ImageFilter = SKImageFilter.CreateBlur(layer.Blur * zoom, layer.Blur * zoom);
-        float w = layer.Bitmap.Width * layer.Scale, h = layer.Bitmap.Height * layer.Scale;
-        bool hasTransform = layer.Rotation != 0 || layer.FlipH || layer.FlipV;
+        float w = layer.Bitmap.Width * layer.ScaleX, h = layer.Bitmap.Height * layer.ScaleY;
+        bool hasTransform = layer.Rotation != 0 || layer.FlipH || layer.FlipV ||
+            layer.ScaleX != layer.ScaleY;
         if (!hasTransform)
         {
             var dst = new SKRect(
                 layer.Position.X * zoom, layer.Position.Y * zoom,
-                (layer.Position.X + layer.Bitmap.Width * layer.Scale) * zoom,
-                (layer.Position.Y + layer.Bitmap.Height * layer.Scale) * zoom);
+                (layer.Position.X + layer.Bitmap.Width * layer.ScaleX) * zoom,
+                (layer.Position.Y + layer.Bitmap.Height * layer.ScaleY) * zoom);
             canvas.DrawBitmap(layer.Bitmap, dst, paint);
             return;
         }
@@ -281,6 +292,7 @@ public class Document
         canvas.Translate(-cx, -cy);
         try
         {
+            // Box size already carries ScaleX/ScaleY; the matrix only rotates/flips about its center.
             var dst = new SKRect(
                 layer.Position.X * zoom, layer.Position.Y * zoom,
                 (layer.Position.X + w) * zoom, (layer.Position.Y + h) * zoom);
@@ -614,8 +626,8 @@ public static class SelectionTools
 
     static void DocToLayer(Layer l, float dx, float dy, out float lx, out float ly)
     {
-        float s = Math.Max(1e-6f, l.Scale);
-        lx = (dx - l.Position.X) / s; ly = (dy - l.Position.Y) / s;
+        float sx = Math.Max(1e-6f, l.ScaleX), sy = Math.Max(1e-6f, l.ScaleY);
+        lx = (dx - l.Position.X) / sx; ly = (dy - l.Position.Y) / sy;
     }
 
     /// <summary>Delete: selection pixels become transparent (Mac clearSelectedPixels).
@@ -702,8 +714,8 @@ public static class SelectionTools
         Document.EnsureUniqueBitmap(layer);
         using var canvas = new SKCanvas(layer.Bitmap);
         float ox = f.Origin.X + f.Offset.X - layer.Position.X, oy = f.Origin.Y + f.Offset.Y - layer.Position.Y;
-        float s = Math.Max(1e-6f, layer.Scale);
-        canvas.DrawBitmap(f.Pixels, new SKRect(ox / s, oy / s, (ox + f.Pixels.Width) / s, (oy + f.Pixels.Height) / s));
+        float sx = Math.Max(1e-6f, layer.ScaleX), sy = Math.Max(1e-6f, layer.ScaleY);
+        canvas.DrawBitmap(f.Pixels, new SKRect(ox / sx, oy / sy, (ox + f.Pixels.Width) / sx, (oy + f.Pixels.Height) / sy));
         // The selection frame travels with the pixels.
         if (doc.Selection is SKRect r)
             doc.Selection = new SKRect(r.Left + f.Offset.X, r.Top + f.Offset.Y, r.Right + f.Offset.X, r.Bottom + f.Offset.Y);
@@ -721,7 +733,7 @@ public static class SelectionTools
         Document.EnsureUniqueBitmap(layer);
         using var canvas = new SKCanvas(layer.Bitmap);
         float ox = f.Origin.X - layer.Position.X, oy = f.Origin.Y - layer.Position.Y;
-        float s = Math.Max(1e-6f, layer.Scale);
-        canvas.DrawBitmap(f.Pixels, new SKRect(ox / s, oy / s, (ox + f.Pixels.Width) / s, (oy + f.Pixels.Height) / s));
+        float sx = Math.Max(1e-6f, layer.ScaleX), sy = Math.Max(1e-6f, layer.ScaleY);
+        canvas.DrawBitmap(f.Pixels, new SKRect(ox / sx, oy / sy, (ox + f.Pixels.Width) / sx, (oy + f.Pixels.Height) / sy));
     }
 }
