@@ -47,3 +47,14 @@
 - XAML: Avalonia compile通過 (Release build時)＋x:Name計130件 (既存114件不変＋新規16件: P2ButtonsPanel・Mixer/Symmetry/Wrap/Perspective/Mesh/History/Macro/Workspace/Hdr/Slice/Compound/BlendRange/Video/Proxy3D/AiAssist各Btn)・操作子名は追加のみで既存不変。
 - .comp v9: 新規保存はversion 9 (history・slice・macro・blendRange・icc・hdrEv)。v1-8読込維持 (Validateは1-9受理・新fieldはv9要求)。
 - 実機GUI目視 (Import→P2編集→Exportの手操作) はWSL headless制約のため未実施。後続実機工程で Mixer・対称・Wrap preview・透視吸着・Mesh/Puppet・History/Macro・Workspace・HDR/ICC/Gamut・Slice/Compound/Blend範囲・動画層・3D・AI補助の目視確認を引き継ぐ。
+
+## v1.1.0-windows 発行検証 (t_6b69f8bb・2026-09-21・WSL)
+- 版表示: v1.0.0-windows → v1.1.0-windows に bump (P0/P1/P2機能追加・.comp v7→v9・試験158→346のため。`tools/Make-Release.ps1` 既定値・README例示を更新)。アプリ内 About は未実装のまま (README・本書「未実施項目」で一致明示)。
+- dotnet build Release (win-x64・自己完結): 0 errors (CS0618警告12件・既存の旧ダイアログ形式のみ)。
+- dotnet test Release: 346/346合格 (0失敗・0スキップ。内訳: 調整32・組合せ39・文書8・JPEG/調色板11・層35・押下10・P0 21・P1 20・P2 39・描画15・性能2・計画書7・選択9・安定4・意匠6・parity 8・変形41)。
+- win-x64自己完結の再現確認: `dotnet publish -c Release -r win-x64 --self-contained true` → 214 entries・`Compositor.exe` 151,552 bytes (既存 `src/publish-win` と同件数・同名一覧一致)。
+- 単独実行体の再現確認: `PublishSingleFile=true` → 単一 `Compositor.exe` 約90MB (`src/publish-win-single`。`Compositor.pdb` 同梱)。
+- 配布zip (Make-Release.ps1手順準拠・WSL側はpython zipfile同等手順): `dist/Compositor-Windows-v1.1.0-windows-win-x64.zip` (42,333,562 bytes・216 entries・`Compositor.exe`＋`LICENSE.txt`＋`README.md`同梱確認)。
+- SHA256: `173F6488EBABD1106DD9ADCAB496F586DEDBBA1EA0783E89C8021F669B55F93B` (`dist/…sha256` に保存・再読込で一致確認)。
+- 旧版 v1.0.0 zip/SHA256・stage は `dist/` に保持 (履歴のため削除せず)。
+- 実機GUI目視 (クリーン導入→起動の手操作) はWSL headless制約のため未実施。公開工程 (t_7e4ae775) で実機確認を引き継ぐ。

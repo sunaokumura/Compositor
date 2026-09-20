@@ -1,4 +1,4 @@
-# FEATURE_GAP — Mac版 vs Windows移植版（t_e1a8b05e時点に更新）
+# FEATURE_GAP — Mac版 vs Windows移植版（t_e1a8b05e時点に作成・P0/P1/P2追記あり・現行 v1.1.0-windows/.comp v9は t_6b69f8bb で確認）
 
 Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移植済み ／ △＝部分的 ／ ×＝未移植。
 詳細は TOOLS_PARITY.md（42件対応表：Gradient工具行を分割）・SHORTCUTS.md（ショートカット一覧）を参照。
@@ -87,3 +87,7 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 4. UX: Photoshop準拠ショートカット（SHORTCUTS.md）・タブ/レイヤーパネル仕上げ（複製/Merge/Lock/リネーム）・Undo/Redo往復テスト合格
 5. 配布品質: zip配布可・README/LICENSE/GAP/PARITY/SHORTCUTS整備。MSIX/署名/チュートリアル/スクリーンショットは次フェーズ
 6. ライセンス: 上流MIT継承明記・命名区別あり
+
+## 現行版注記 (t_6b69f8bb・2026-09-21・v1.1.0-windows)
+- 単体346件合格 (内訳は README「テスト」欄参照)・.comp v9書出/v1-8読込。P0/P1/P2節の内容は本文に追記済み。
+- 上記「実用レベル6項目の自己評価」は t_e1a8b05e 時点の記録として保持 (数値は当時のもの)。

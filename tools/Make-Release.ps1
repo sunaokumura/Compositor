@@ -11,7 +11,7 @@
   powershell -ExecutionPolicy Bypass -File tools\Make-Release.ps1 -Version v1.0.0-windows
 #>
 param(
-  [string]$Version = "v1.0.0-windows",
+  [string]$Version = "v1.1.0-windows",
   [string]$Configuration = "Release",
   [string]$Runtime = "win-x64"
 )

@@ -8,7 +8,7 @@
   Click操作子は git diff で完全一致 (NAMES-IDENTICAL / CLICK-IDENTICAL)。
 - 結果: dotnet test Release 228/228合格 (既存164維持 + 本試験64件)。
 - dotnet build Release 0 errors (CS0618旧ダイアログ警告のみ・既存)。
-- 作業場gitへcommit済 (pushなし)。C:\Users\sunao\Apps\Compositor への反映は
+- 作業場gitへcommit済 (pushなし)。C:\Users\<user>\Apps\Compositor への反映は
   利用者の許可なく禁止のため未実施。
 
 ## 1. 全鍵の押下試験
@@ -103,7 +103,7 @@ engine-level に単体化した組合せ (UI gesture 自体は §7 手順 E-2 �
 
 実施済み (WSL側): dotnet build Release 0 errors (Avalonia XAML compile 通過 =
 起動画面構成の構文検証) + dotnet test 228/228。以下は Windows 実機側の手順
-(利用者の許可後に実施。C:\Users\sunao\Apps\Compositor への反映は許可なく禁止)。
+(利用者の許可後に実施。C:\Users\<user>\Apps\Compositor への反映は許可なく禁止)。
 
 - E-0 準備: Compositor.exe を起動。%TEMP%\compositor.log に起動 ERROR なしを確認。
 - E-1 全鍵: 工具列18鍵を順に押下。有効鍵は工具頭欄の題・助言が切替わること。

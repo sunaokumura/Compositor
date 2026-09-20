@@ -1,4 +1,4 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_569f69c1最終版）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_569f69c1最終版を基盤・P0/P1/P2追記あり・現行 v1.1.0-windows/346件は t_6b69f8bb で確認）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
@@ -85,7 +85,7 @@ Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42
 - × 3件（表内）： MaskTracing / GuidedMatte（SubjectRemoval関連のため対象外） / SubjectRemoval（Vision相当なし）。いずれもUIに「未対応」バッジ・無効化・ツールチップで明示
 - ×相当バッジ計7： 表内×3に加え、調整・フィルタ系シートUI未対応ボタン4（Curves/Levels/Hue/Filterのダイアログ。エンジンは△欄に移植済みのため表判定は△、ボタンは将来のシートUI用に未対応表示を残置）。P0(t_7d185144)で機能対話（Curves.../Levels.../Hue.../Filter...）を追加し、旧バッジ4は意匠回帰試験の互換のため残置（機能の入口は新ボタン）。Shape/Gradient/ContentFill/Mask/Group/Clipは対応済みのためバッジ解除・Fボタン有効化
 - 入出力・文書UI系（別枠・42件外）： 8行すべて△（.comp保存開封v1-7読込/v7書出・Save/SaveAs/Open・PNG/JPEG出力・Import・NewCanvas・JPEG/Colorピッカー・タブ）。HEIC/TIFFは復号器なしのため探知＋「未対応形式」明示
-- 検証証跡（t_569f69c1）： dotnet test Release 158/158合格（内Perf 2件含む）。Perf回帰＝4K三層合成84ms（基準94ms台を下回る）・1000回合成ストレス 949ms・メモリ+7KB（漏洩目安50MB未満を大幅クリア）。win-x64自己完結発行（0 errors・CS0618ダイアログ警告のみ）＋Make-Release.ps1で配布zip更新（216 entries・SHA256はdist内.sha256参照）。C:\Users\sunao\Apps\Compositor への上書き反映は利用者許可待ちのため未実施（既配置版は21:42版のまま）。追補： 実機煙試験で起動直後のSyncPalette ERROR（Index範囲外）を検出→原因工程t_e1a8b05eのDocumentsUI.SyncPalettePanel再入ガード欠落と特定し修正（updatingPaletteガード＋SafeSelect化＋例外全文ログ化）。修正後は全158試験再合格・修正版で実機再起動し無エラー起動を確認（Compositor for Windows・Responding=True・compositor.logにERRORなし）。修正版でpublish-winと配布zipを再生成（SHA256はdist内.sha256参照）
+- 検証証跡（t_569f69c1）： dotnet test Release 158/158合格（内Perf 2件含む）。Perf回帰＝4K三層合成84ms（基準94ms台を下回る）・1000回合成ストレス 949ms・メモリ+7KB（漏洩目安50MB未満を大幅クリア）。win-x64自己完結発行（0 errors・CS0618ダイアログ警告のみ）＋Make-Release.ps1で配布zip更新（216 entries・SHA256はdist内.sha256参照）。C:\Users\<user>\Apps\Compositor への上書き反映は利用者許可待ちのため未実施（既配置版は21:42版のまま）。追補： 実機煙試験で起動直後のSyncPalette ERROR（Index範囲外）を検出→原因工程t_e1a8b05eのDocumentsUI.SyncPalettePanel再入ガード欠落と特定し修正（updatingPaletteガード＋SafeSelect化＋例外全文ログ化）。修正後は全158試験再合格・修正版で実機再起動し無エラー起動を確認（Compositor for Windows・Responding=True・compositor.logにERRORなし）。修正版でpublish-winと配布zipを再生成（SHA256はdist内.sha256参照）
 
 ## 意匠作替（t_fec99135・2026-09-20・機能 parity 不変）
 - 目的： 素人感の脱却。画像中心の専門製品意匠へ作替え（Photoshop超えの操作感が目標）。機能追加・削除なし。
