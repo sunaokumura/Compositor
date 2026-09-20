@@ -14,11 +14,11 @@
 ## 選択系
 | Mac | Windows | 状態 |
 |---|---|---|
-| Selection.swift（パス選択・選択範囲クリップ） | Document.Selection（矩形Marquee＋破線オーバーレイ＋ブラシ制限） | △（パスのみ矩形） |
-| SelectionEdits.swift | Marquee作成・Ctrl+D解除 | △ |
-| SelectionClipboard.swift（選択コピー/結合コピー） | Copy/Paste（レイヤー単位PNG経由） | △（選択範囲切り抜き・結合コピーなし） |
-| MagicWand.swift | — | ×（MagicWand (未対応)バッジ） |
-| FloatingSelection.swift（フローティング選択） | — | × |
+| Selection.swift（パス選択・選択範囲クリップ） | Document.Selection＋SelKind/Polygon/Mask（矩形/楕円/投繩/多角＋破線・rubber-band・ブラシ制限） | △（アンチエイリアス・パス演算なし） |
+| SelectionEdits.swift | Marquee作成（Shift正方形・Alt中心・加減算）・枠移動・Ctrl+D解除・Delete範囲消去 | △（Expand/Contractなし） |
+| SelectionClipboard.swift（選択コピー/結合コピー） | Copy選択切抜き＋原位置Paste（単層・マスク抜き） | △（結合コピーなし） |
+| MagicWand.swift | SelectionTools.WandMask（tolerance・contiguous・sampleAllLayers、WandPixels.c相当flood fill C#化） | △（sample size固定・詳細アウトラインなし） |
+| FloatingSelection.swift（フローティング選択） | FloatingSelection（切出し移動・複写・Enter確定・Esc取消・矢印nudge） | △（変形ハンドルなし・移動のみ） |
 | MaskTracing.swift | — | × |
 | ShapeTool.swift | — | × |
 
@@ -64,5 +64,5 @@
 
 ## 集計
 - ○ 5件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / （部分含め実用中核）
-- △ 15件： ブラシ・矩形選択・変形・調整・ぼかし・タブ等が実用サブセットで動作
-- × 21件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（Lasso/MagicWand/CloneStamp/Heal/Smudge/ContentFill/SubjectRemoval/Distort/Curves/Levels/GradientMap）
+- △ 17件： ブラシ・選択（矩形/楕円/投繩/多角/Wand/画素移動）・変形・調整・ぼかし・タブ等が実用サブセットで動作
+- × 19件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（CloneStamp/Heal/Smudge/ContentFill/SubjectRemoval/Distort/Curves/Levels/GradientMap等。Lasso/MagicWandはt_548a86a5で対応済みのためバッジ解除）

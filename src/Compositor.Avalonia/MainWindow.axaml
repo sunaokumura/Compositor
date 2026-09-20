@@ -4,130 +4,182 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         x:Class="Compositor.MainWindow"
         x:Name="Root"
-        Title="Compositor for Windows" Width="1200" Height="760">
-  <Grid ColumnDefinitions="300,*" RowDefinitions="40,34,*">
-    <!-- menu bar / toolbar -->
-    <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="6,4">
-      <Button x:Name="UndoBtn" Content="Undo" Click="OnUndo" ToolTip.Tip="Ctrl+Z"/>
-      <Button x:Name="RedoBtn" Content="Redo" Click="OnRedo" ToolTip.Tip="Ctrl+Y / Ctrl+Shift+Z"/>
-      <Separator/>
-      <Button x:Name="CopyBtn" Content="Copy" Click="OnCopy" ToolTip.Tip="Ctrl+C"/>
-      <Button x:Name="PasteBtn" Content="Paste" Click="OnPaste" ToolTip.Tip="Ctrl+V"/>
-      <Separator/>
-      <Button x:Name="MoveBtn" Content="Move" Click="OnToolMove" ToolTip.Tip="V"/>
-      <Button x:Name="HandBtn" Content="Hand" Click="OnToolHand" ToolTip.Tip="H"/>
-      <Button x:Name="BrushBtn" Content="Brush" Click="OnToolBrush" ToolTip.Tip="B: レイヤーに直接描画"/>
-      <Button x:Name="EraserBtn" Content="Eraser" Click="OnToolEraser" ToolTip.Tip="E: 透明で消去"/>
-      <Button x:Name="MarqueeBtn" Content="Marquee" Click="OnToolMarquee" ToolTip.Tip="M: 矩形選択 (Ctrl+Dで解除)"/>
-      <Button x:Name="ZoomInBtn" Content="+" Click="OnZoomIn"/>
-      <Button x:Name="ZoomOutBtn" Content="-" Click="OnZoomOut"/>
-      <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Text="100%"/>
-      <Separator/>
-      <Button Content="Lasso (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の投げ縄選択。Windows版では未対応です。Marqueeをお使いください。"/>
-      <Button Content="MagicWand (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の自動選択。Windows版では未対応です。"/>
-      <Button Content="CloneStamp (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のクローンスタンプ。Windows版では未対応です。"/>
-      <Button Content="Heal (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のスポット修復。Windows版では未対応です。"/>
-      <Button Content="Smudge (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のにじみ。Windows版では未対応です。"/>
-      <Button Content="ContentFill (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のコンテンツに応じた塗りつぶし。Windows版では未対応です。"/>
-      <Button x:Name="SubjectRemovalBtn" Content="Subject Removal (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。"/>
-    </StackPanel>
-    <!-- document tabs -->
-    <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="6" Margin="6,0">
-      <TabControl x:Name="DocTabs" SelectionChanged="OnDocTabChanged" MinWidth="400"/>
-      <Button Content="New Doc" Click="OnNewDocTab" ToolTip.Tip="Ctrl+N: 新しいドキュメントタブ"/>
-    </StackPanel>
-    <!-- left: layers -->
-    <ScrollViewer Grid.Row="2" Grid.Column="0" VerticalScrollBarVisibility="Auto">
-    <StackPanel Spacing="6" Margin="6,6,6,6">
-      <TextBlock Text="Layers (top first)" FontWeight="Bold"/>
-      <ListBox x:Name="LayerList" Height="260" SelectionChanged="OnLayerSelected"/>
-      <WrapPanel Orientation="Horizontal">
+        Title="Compositor for Windows" Width="1280" Height="800" Background="#1E1E1E" Foreground="#E8E8E8">
+  <!-- Mac版準拠: 上=ツールバー / 工具ヘッダー / 中=工具レール+画布+層板(右) / 下=状態欄 -->
+  <Grid RowDefinitions="40,42,*,30">
+    <Border Grid.Row="0" Background="#2D2D30" BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,4" VerticalAlignment="Center">
+        <Button Content="+ New" Click="OnNewDocTab" ToolTip.Tip="Ctrl+N: 新しいドキュメントタブ"/>
+        <TabControl x:Name="DocTabs" SelectionChanged="OnDocTabChanged" MinWidth="280" MaxWidth="480" Height="30" VerticalAlignment="Center"/>
+        <Separator/>
+        <Button Content="Fit" Click="OnFit" ToolTip.Tip="Fit canvas in window"/>
+        <Button Content="100%" Click="OnZoom100" ToolTip.Tip="Actual pixels"/>
+        <Button x:Name="ZoomInBtn" Content="+" Click="OnZoomIn"/>
+        <Button x:Name="ZoomOutBtn" Content="-" Click="OnZoomOut"/>
+        <TextBlock x:Name="ZoomLabel" VerticalAlignment="Center" Text="100%"/>
+        <Separator/>
+        <Button x:Name="UndoBtn" Content="Undo" Click="OnUndo" ToolTip.Tip="Ctrl+Z"/>
+        <Button x:Name="RedoBtn" Content="Redo" Click="OnRedo" ToolTip.Tip="Ctrl+Y / Ctrl+Shift+Z"/>
+        <Separator/>
+        <Button x:Name="CopyBtn" Content="Copy" Click="OnCopy" ToolTip.Tip="Ctrl+C"/>
+        <Button x:Name="PasteBtn" Content="Paste" Click="OnPaste" ToolTip.Tip="Ctrl+V"/>
+        <Separator/>
         <Button Content="New" Click="OnNew"/>
         <Button Content="Import" Click="OnImport" ToolTip.Tip="Ctrl+O"/>
         <Button Content="Export PNG" Click="OnExport" ToolTip.Tip="Ctrl+E"/>
-        <Button Content="+Layer" Click="OnAddLayer"/>
-        <Button Content="-Layer" Click="OnDeleteLayer" ToolTip.Tip="Del"/>
-        <Button Content="Up" Click="OnUp"/>
-        <Button Content="Down" Click="OnDown"/>
-        <Button Content="Duplicate" Click="OnDuplicateLayer" ToolTip.Tip="選択レイヤーを複製"/>
-        <Button Content="Merge Down" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合"/>
-        <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged"/>
-        <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止"/>
-      </WrapPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Rename" VerticalAlignment="Center"/>
-        <TextBox x:Name="RenameBox" Width="140"/>
-        <Button Content="Apply" Click="OnRename"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Blend" VerticalAlignment="Center"/>
-        <ComboBox x:Name="BlendBox" Width="120" SelectionChanged="OnBlendChanged"/>
+    </Border>
+    <Border Grid.Row="1" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
+      <StackPanel Orientation="Horizontal" Spacing="12" Margin="18,0" VerticalAlignment="Center">
+        <TextBlock x:Name="ToolHeaderTitle" Text="Move" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center"/>
+        <TextBlock x:Name="ToolHeaderHint" Text="Drag to move" FontSize="12" Foreground="Gray" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Opacity" VerticalAlignment="Center"/>
-        <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="150" ValueChanged="OnOpacityChanged"/>
-        <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%"/>
+    </Border>
+    <Grid Grid.Row="2" ColumnDefinitions="56,*,280">
+      <Border Grid.Column="0" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,1,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="4" Margin="0,12,0,12" HorizontalAlignment="Center">
+            <Button x:Name="MoveBtn" Content="M" Width="36" Height="36" Click="OnToolMove" ToolTip.Tip="Move (V)"/>
+            <Button x:Name="HandBtn" Content="H" Width="36" Height="36" Click="OnToolHand" ToolTip.Tip="Hand (H)"/>
+            <Button x:Name="BrushBtn" Content="B" Width="36" Height="36" Click="OnToolBrush" ToolTip.Tip="B: レイヤーに直接描画"/>
+            <Button x:Name="EraserBtn" Content="E" Width="36" Height="36" Click="OnToolEraser" ToolTip.Tip="E: 透明で消去"/>
+            <Button x:Name="MarqueeBtn" Content="S" Width="36" Height="36" Click="OnToolMarquee" ToolTip.Tip="M: 矩形/楕円選択 (Mで切替・Ctrl+Dで解除)"/>
+            <Separator Width="36"/>
+            <Button x:Name="LassoBtn" Content="L" Width="36" Height="28" Click="OnToolLasso" ToolTip.Tip="L: 投げ縄選択 (自由/多角切替・Enter確定・Esc取消)"/>
+            <Button x:Name="WandBtn" Content="W" Width="36" Height="28" Click="OnToolWand" ToolTip.Tip="W: 自動選択 (Tolerance・Contiguous)"/>
+            <Button Content="C" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のクローンスタンプ。Windows版では未対応です。"/>
+            <Button Content="R" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のスポット修復。Windows版では未対応です。"/>
+            <Button Content="G" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のにじみ。Windows版では未対応です。"/>
+            <Button Content="F" Width="36" Height="28" IsEnabled="False" ToolTip.Tip="Mac版のコンテンツに応じた塗りつぶし。Windows版では未対応です。"/>
+            <Button Content="SR" Width="36" Height="28" FontSize="10" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です。"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      <Border Grid.Column="1" Background="#1E1E1E">
+        <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+          <Image x:Name="CanvasImage" Stretch="None"
+                 PointerPressed="OnCanvasPointerPressed"
+                 PointerMoved="OnCanvasPointerMoved"
+                 PointerReleased="OnCanvasPointerReleased"/>
+        </ScrollViewer>
+      </Border>
+      <Border Grid.Column="2" Background="#252526" BorderBrush="#3E3E42" BorderThickness="1,0,0,0">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="6" Margin="6,6,6,6">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Layers" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+              <TextBlock x:Name="LayerCountLabel" Foreground="Gray" FontSize="11" VerticalAlignment="Center" Text="0"/>
+            </StackPanel>
+            <ListBox x:Name="LayerList" Height="220" SelectionChanged="OnLayerSelected"/>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="+Layer" Click="OnAddLayer"/>
+              <Button Content="-Layer" Click="OnDeleteLayer" ToolTip.Tip="Del"/>
+              <Button Content="Up" Click="OnUp"/>
+              <Button Content="Down" Click="OnDown"/>
+              <Button Content="Duplicate" Click="OnDuplicateLayer" ToolTip.Tip="選択レイヤーを複製"/>
+              <Button Content="Merge Down" Click="OnMergeDown" ToolTip.Tip="下レイヤーへ結合"/>
+              <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged"/>
+              <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止"/>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Rename" VerticalAlignment="Center"/>
+              <TextBox x:Name="RenameBox" Width="130"/>
+              <Button Content="Apply" Click="OnRename"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Blend" VerticalAlignment="Center"/>
+              <ComboBox x:Name="BlendBox" Width="120" SelectionChanged="OnBlendChanged"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Opacity" VerticalAlignment="Center"/>
+              <Slider x:Name="OpacitySlider" Minimum="0" Maximum="100" Width="140" ValueChanged="OnOpacityChanged"/>
+              <TextBlock x:Name="OpacityLabel" VerticalAlignment="Center" Text="100%"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Scale %" VerticalAlignment="Center"/>
+              <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="140" ValueChanged="OnScaleChanged"/>
+            </StackPanel>
+            <TextBlock Text="Transform" FontWeight="SemiBold" FontSize="12"/>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Rotate" VerticalAlignment="Center"/>
+              <Slider x:Name="RotateSlider" Minimum="-180" Maximum="180" Width="120" ValueChanged="OnRotateChanged"/>
+              <TextBlock x:Name="RotateLabel" VerticalAlignment="Center" Text="0°"/>
+            </StackPanel>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Rotate +90" Click="OnRotate90" ToolTip.Tip="時計回りに90°"/>
+              <Button Content="Flip H" Click="OnFlipH"/>
+              <Button Content="Flip V" Click="OnFlipV"/>
+              <Button Content="Distort (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の自由変形・歪み。Windows版では未対応です。"/>
+            </WrapPanel>
+            <TextBlock Text="Adjust (non-destructive)" FontWeight="SemiBold" FontSize="12"/>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Bright" VerticalAlignment="Center" Width="52"/>
+              <Slider x:Name="BrightSlider" Minimum="-100" Maximum="100" Width="120" ValueChanged="OnBrightChanged"/>
+              <TextBlock x:Name="BrightLabel" VerticalAlignment="Center" Text="0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Contrast" VerticalAlignment="Center" Width="52"/>
+              <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Width="120" ValueChanged="OnContrastChanged"/>
+              <TextBlock x:Name="ContrastLabel" VerticalAlignment="Center" Text="0"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Satur." VerticalAlignment="Center" Width="52"/>
+              <Slider x:Name="SaturSlider" Minimum="0" Maximum="200" Width="120" ValueChanged="OnSaturChanged"/>
+              <TextBlock x:Name="SaturLabel" VerticalAlignment="Center" Text="100"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Blur" VerticalAlignment="Center" Width="52"/>
+              <Slider x:Name="BlurSlider" Minimum="0" Maximum="25" Width="120" ValueChanged="OnBlurChanged"/>
+              <TextBlock x:Name="BlurLabel" VerticalAlignment="Center" Text="0"/>
+            </StackPanel>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Invert" Click="OnInvert" ToolTip.Tip="選択レイヤーを反転 (Undo可)"/>
+              <Button Content="Curves (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のカーブ調整。Windows版では未対応です。"/>
+              <Button Content="Levels (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のレベル調整。Windows版では未対応です。"/>
+              <Button Content="GradientMap (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のグラデーションマップ。Windows版では未対応です。"/>
+            </WrapPanel>
+            <TextBlock Text="Brush" FontWeight="SemiBold" FontSize="12"/>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Size" VerticalAlignment="Center"/>
+              <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="120" Value="24"/>
+              <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色"/>
+            </StackPanel>
+            <TextBlock Text="Selection" FontWeight="SemiBold" FontSize="12"/>
+            <WrapPanel Orientation="Horizontal">
+              <Button x:Name="MarqueeShapeBtn" Content="Rect" Click="OnToggleMarqueeShape" ToolTip.Tip="M: 矩形/楕円切替 (Shift=正方形・Alt=中心)"/>
+              <Button x:Name="LassoKindBtn" Content="Freehand" Click="OnToggleLassoKind" ToolTip.Tip="L: 自由投繩/多角投繩切替"/>
+              <ComboBox x:Name="SelModeBox" Width="110" SelectedIndex="0" SelectionChanged="OnSelModeChanged" ToolTip.Tip="New=置換・Add=加算(Shift)・Subtract=減算(Alt)">
+                <ComboBoxItem>New</ComboBoxItem>
+                <ComboBoxItem>Add</ComboBoxItem>
+                <ComboBoxItem>Subtract</ComboBoxItem>
+              </ComboBox>
+            </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="52" ToolTip.Tip="Wand許容差 0-255"/>
+              <Slider x:Name="WandToleranceSlider" Minimum="0" Maximum="255" Width="120" Value="32"/>
+            </StackPanel>
+            <WrapPanel Orientation="Horizontal">
+              <CheckBox x:Name="WandContiguousCheck" Content="Contiguous" IsChecked="True" ToolTip.Tip="隣接のみ選択 (OFF=全体から類似色)"/>
+              <CheckBox x:Name="WandSampleAllCheck" Content="All Layers" ToolTip.Tip="可視合成から読む (OFF=選択層のみ)"/>
+            </WrapPanel>
+            <WrapPanel Orientation="Horizontal">
+              <Button Content="Deselect" Click="OnDeselect" ToolTip.Tip="Ctrl+D: 選択解除"/>
+              <Button Content="Delete Sel" Click="OnDeleteSelection" ToolTip.Tip="Del: 選択範囲の画素を消去"/>
+            </WrapPanel>
+            <TextBlock Text="M=Rect/Ellipse L=Lasso/Poly W=Wand Enter=確定 Esc=取消 Move内Drag=枠移動 Ctrl+Drag=画素移動 Alt+Drag=複写" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
+            <TextBlock Text="B=Brush E=Eraser M=Marquee V=Move H=Hand [=size Ctrl+Z/Y Ctrl+C/V Ctrl+N/O/E Ctrl+D Del Arrows=nudge" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
+            <Button x:Name="SubjectRemovalBtn" Content="Subject Removal (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の被写体除去(Vision)。Windows版では未対応です." Height="0" Width="0" Opacity="0"/>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+    <Border Grid.Row="3" Background="#2D2D30" BorderBrush="#3E3E42" BorderThickness="0,1,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="16" Margin="18,0" VerticalAlignment="Center">
+        <TextBlock x:Name="StatusZoom" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="100%"/>
+        <TextBlock x:Name="StatusDoc" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="800 x 600 px"/>
+        <TextBlock FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="sRGB · Transparent"/>
+        <TextBlock x:Name="StatusHint" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Text="Drag to move"/>
       </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Scale %" VerticalAlignment="Center"/>
-        <Slider x:Name="ScaleSlider" Minimum="5" Maximum="400" Width="150" ValueChanged="OnScaleChanged"/>
-      </StackPanel>
-      <TextBlock Text="Transform (Mac LayerTransform subset)" FontWeight="Bold"/>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Rotate" VerticalAlignment="Center"/>
-        <Slider x:Name="RotateSlider" Minimum="-180" Maximum="180" Width="130" ValueChanged="OnRotateChanged"/>
-        <TextBlock x:Name="RotateLabel" VerticalAlignment="Center" Text="0°"/>
-      </StackPanel>
-      <WrapPanel Orientation="Horizontal">
-        <Button Content="Rotate +90" Click="OnRotate90" ToolTip.Tip="時計回りに90°"/>
-        <Button Content="Flip H" Click="OnFlipH"/>
-        <Button Content="Flip V" Click="OnFlipV"/>
-        <Button Content="Distort (未対応)" IsEnabled="False" ToolTip.Tip="Mac版の自由変形・歪み。Windows版では未対応です。"/>
-      </WrapPanel>
-      <TextBlock Text="Adjust (Mac ImageAdjustments subset, non-destructive)" FontWeight="Bold"/>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Bright" VerticalAlignment="Center" Width="52"/>
-        <Slider x:Name="BrightSlider" Minimum="-100" Maximum="100" Width="130" ValueChanged="OnBrightChanged"/>
-        <TextBlock x:Name="BrightLabel" VerticalAlignment="Center" Text="0"/>
-      </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Contrast" VerticalAlignment="Center" Width="52"/>
-        <Slider x:Name="ContrastSlider" Minimum="-100" Maximum="100" Width="130" ValueChanged="OnContrastChanged"/>
-        <TextBlock x:Name="ContrastLabel" VerticalAlignment="Center" Text="0"/>
-      </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Satur." VerticalAlignment="Center" Width="52"/>
-        <Slider x:Name="SaturSlider" Minimum="0" Maximum="200" Width="130" ValueChanged="OnSaturChanged"/>
-        <TextBlock x:Name="SaturLabel" VerticalAlignment="Center" Text="100"/>
-      </StackPanel>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Blur" VerticalAlignment="Center" Width="52"/>
-        <Slider x:Name="BlurSlider" Minimum="0" Maximum="25" Width="130" ValueChanged="OnBlurChanged"/>
-        <TextBlock x:Name="BlurLabel" VerticalAlignment="Center" Text="0"/>
-      </StackPanel>
-      <WrapPanel Orientation="Horizontal">
-        <Button Content="Invert" Click="OnInvert" ToolTip.Tip="選択レイヤーを反転 (Undo可)"/>
-        <Button Content="Curves (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のカーブ調整。Windows版では未対応です。"/>
-        <Button Content="Levels (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のレベル調整。Windows版では未対応です。"/>
-        <Button Content="GradientMap (未対応)" IsEnabled="False" ToolTip.Tip="Mac版のグラデーションマップ。Windows版では未対応です。"/>
-      </WrapPanel>
-      <TextBlock Text="Brush" FontWeight="Bold"/>
-      <StackPanel Orientation="Horizontal" Spacing="6">
-        <TextBlock Text="Size" VerticalAlignment="Center"/>
-        <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="130" Value="24"/>
-        <ComboBox x:Name="BrushColorBox" Width="110" ToolTip.Tip="ブラシ色"/>
-      </StackPanel>
-      <TextBlock Text="Shortcuts: B=Brush E=Eraser M=Marquee V=Move H=Hand [=BrushSize Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+N/O/E Ctrl+D=Deselect Del Arrows=Nudge" TextWrapping="Wrap" Foreground="Gray" FontSize="11"/>
-    </StackPanel>
-    </ScrollViewer>
-    <!-- canvas -->
-    <Border Grid.Row="2" Grid.Column="1" Margin="6" Background="#3C3C40">
-      <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-        <Image x:Name="CanvasImage" Stretch="None"
-               PointerPressed="OnCanvasPointerPressed"
-               PointerMoved="OnCanvasPointerMoved"
-               PointerReleased="OnCanvasPointerReleased"/>
-      </ScrollViewer>
     </Border>
   </Grid>
 </Window>

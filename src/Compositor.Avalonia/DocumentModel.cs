@@ -121,9 +121,17 @@ public class Document
     public int Height;
     public string Name = "Untitled";
     public List<Layer> Layers = new();   // bottom-up order
-    /// <summary>Marquee selection in document px (Mac DocumentSelection subset: rect only).
-    /// null = no selection (whole canvas). Lasso/MagicWand are explicitly unsupported.</summary>
+    /// <summary>Marquee selection bounds in document px (Mac DocumentSelection subset: rect + ellipse bbox).</summary>
+    /// null = no selection (whole canvas). The outline kind and vector/mask detail live in
+    /// SelKind / SelectionPolygon / SelectionMask below.
     public SKRect? Selection;
+    /// <summary>Outline kind of the current selection (Mac LassoKind subset: rectangle/ellipse/freehand/polygonal/wand).</summary>
+    public SelectionKind SelKind = SelectionKind.Rectangle;
+    /// <summary>Outline vertices in document px for Freehand/Polygon/Wand (closed loop, may be null).</summary>
+    public List<SKPoint> SelectionPolygon;
+    /// <summary>Rasterized selection mask at document resolution (1 = selected). Null = derive from Selection/SelKind.</summary>
+    public byte[] SelectionMask;
+    public int SelectionMaskW, SelectionMaskH;
 
     public event Action Changed;
     public void RaiseChanged() => Changed?.Invoke();
@@ -168,11 +176,15 @@ public class Document
     }
 
     /// <summary>Brush/eraser dab polyline in layer-pixel space (Mac BrushStroke subset: round dabs, no spacing dynamics).</summary>
-    public static void PaintStroke(Layer layer, IList<SKPoint> points, SKColor color, float diameter, bool erasing, float opacity = 1f)
+    public static void PaintStroke(Layer layer, IList<SKPoint> points, SKColor color, float diameter, bool erasing, float opacity = 1f, SKRect? clip = null)
     {
         if (layer?.Bitmap == null || points == null || points.Count == 0 || diameter <= 0) return;
         EnsureUniqueBitmap(layer);
         using var canvas = new SKCanvas(layer.Bitmap);
+        bool clipped = clip is SKRect c && c.Width > 0 && c.Height > 0;
+        if (clipped) { canvas.Save(); canvas.ClipRect(clip.Value); }
+        try
+        {
         using var paint = new SKPaint
         {
             Color = erasing ? SKColors.Transparent : color.WithAlpha((byte)Math.Round(opacity * 255)),
@@ -192,6 +204,8 @@ public class Document
         else
             for (int i = 1; i < points.Count; i++)
                 canvas.DrawLine(points[i - 1], points[i], paint);
+        }
+        finally { if (clipped) canvas.Restore(); }
     }
 
     /// <summary>Destructive invert (Mac PixelInvert equivalent). Push Undo first; COW keeps pre-invert pixels.</summary>
@@ -273,5 +287,441 @@ public class Document
             canvas.DrawBitmap(layer.Bitmap, dst, paint);
         }
         finally { canvas.Restore(); }
+    }
+
+    /// <summary>Hit test against the current selection outline (Mac Selection.swift subset).
+    /// Rect = bounds, Ellipse = ellipse equation, Freehand/Polygon = point-in-polygon,
+    /// Wand = stored mask (falls back to bounds when no mask).</summary>
+    public bool InsideSelection(SKPoint docPoint)
+    {
+        if (Selection is not SKRect r) return true;   // no selection = everything
+        return SelectionTools.Contains(this, docPoint);
+    }
+
+    /// <summary>Clear the selection (Mac deselect). Selection itself is never an Undo step.</summary>
+    public void ClearSelection()
+    {
+        Selection = null;
+        SelectionPolygon = null;
+        SelectionMask = null;
+        SelectionMaskW = SelectionMaskH = 0;
+    }
+}
+
+/// <summary>Selection outline kind (Mac LassoKind subset).</summary>
+public enum SelectionKind { Rectangle, Ellipse, Freehand, Polygon, Wand }
+
+/// <summary>How a new outline combines with the existing selection (Mac SelectionMode).</summary>
+public enum SelectionMode { Replace, Add, Subtract }
+
+/// <summary>Lifted pixels being dragged (Mac PixelMove/FloatingSelection subset).
+/// Pixels are stored cropped to the selection bounds; Origin is the cut position in doc px.</summary>
+public class FloatingSelection
+{
+    public SKBitmap Pixels;      // cropped raster (transparent outside the outline)
+    public SKPoint Origin;       // doc-px top-left where the pixels were cut
+    public SKPoint Offset;       // current drag offset in doc px
+    public bool Duplicate;       // true = source kept (Alt-drag copy)
+}
+
+/// <summary>Selection tools ported from Mac Selection.swift / MagicWand.swift / WandPixels.c
+/// (raster/atlas approach: outlines rasterize to a doc-resolution mask for edits).</summary>
+public static class SelectionTools
+{
+    /// <summary>Drag box from anchor to point in whole pixels (Mac DragBox.rect port).
+    /// square evens the sides (Shift), fromCenter grows around the anchor (Option/Alt).</summary>
+    public static SKRect DragBoxRect(SKPoint anchor, SKPoint point, bool square, bool fromCenter)
+    {
+        float dx = MathF.Round(point.X) - anchor.X, dy = MathF.Round(point.Y) - anchor.Y;
+        if (square)
+        {
+            float side = Math.Max(Math.Abs(dx), Math.Abs(dy));
+            dx = dx < 0 ? -side : side;
+            dy = dy < 0 ? -side : side;
+        }
+        if (fromCenter)
+            return new SKRect(anchor.X - Math.Abs(dx), anchor.Y - Math.Abs(dy),
+                              anchor.X + Math.Abs(dx), anchor.Y + Math.Abs(dy));
+        return new SKRect(Math.Min(anchor.X, anchor.X + dx), Math.Min(anchor.Y, anchor.Y + dy),
+                          Math.Max(anchor.X, anchor.X + dx), Math.Max(anchor.Y, anchor.Y + dy));
+    }
+
+    public static bool EllipseContains(SKRect bounds, SKPoint p)
+    {
+        float rx = bounds.Width / 2, ry = bounds.Height / 2;
+        if (rx <= 0 || ry <= 0) return false;
+        float nx = (p.X - (bounds.Left + rx)) / rx, ny = (p.Y - (bounds.Top + ry)) / ry;
+        return nx * nx + ny * ny <= 1f;
+    }
+
+    /// <summary>Even-odd point-in-polygon (float, doc px).</summary>
+    public static bool PointInPolygon(IList<SKPoint> poly, SKPoint p)
+    {
+        bool inside = false;
+        for (int i = 0, j = poly.Count - 1; i < poly.Count; j = i++)
+        {
+            var a = poly[i]; var b = poly[j];
+            if ((a.Y > p.Y) != (b.Y > p.Y) &&
+                p.X < (b.X - a.X) * (p.Y - a.Y) / (b.Y - a.Y) + a.X)
+                inside = !inside;
+        }
+        return inside;
+    }
+
+    public static SKRect PolygonBounds(IList<SKPoint> poly)
+    {
+        float x0 = float.MaxValue, y0 = float.MaxValue, x1 = float.MinValue, y1 = float.MinValue;
+        foreach (var p in poly)
+        {
+            x0 = Math.Min(x0, p.X); y0 = Math.Min(y0, p.Y);
+            x1 = Math.Max(x1, p.X); y1 = Math.Max(y1, p.Y);
+        }
+        return new SKRect(x0, y0, x1, y1);
+    }
+
+    public static bool Contains(Document doc, SKPoint p)
+    {
+        var r = doc.Selection.Value;
+        switch (doc.SelKind)
+        {
+            case SelectionKind.Ellipse: return EllipseContains(r, p);
+            case SelectionKind.Freehand:
+            case SelectionKind.Polygon:
+                if (doc.SelectionPolygon != null && doc.SelectionPolygon.Count >= 3)
+                    return PointInPolygon(doc.SelectionPolygon, p);
+                return r.Contains(p.X, p.Y);
+            case SelectionKind.Wand:
+                if (doc.SelectionMask != null && doc.SelectionMaskW == doc.Width && doc.SelectionMaskH == doc.Height)
+                {
+                    int x = (int)MathF.Floor(p.X), y = (int)MathF.Floor(p.Y);
+                    if (x < 0 || y < 0 || x >= doc.Width || y >= doc.Height) return false;
+                    return doc.SelectionMask[y * doc.Width + x] != 0;
+                }
+                return r.Contains(p.X, p.Y);
+            default: return r.Contains(p.X, p.Y);
+        }
+    }
+
+    // ---------- rasterization (doc-resolution masks, 1 = selected) ----------
+
+    public static byte[] RasterizeRect(SKRect r, int w, int h)
+    {
+        var m = new byte[w * h];
+        int x0 = Math.Clamp((int)MathF.Floor(r.Left), 0, w), x1 = Math.Clamp((int)MathF.Ceiling(r.Right), 0, w);
+        int y0 = Math.Clamp((int)MathF.Floor(r.Top), 0, h), y1 = Math.Clamp((int)MathF.Ceiling(r.Bottom), 0, h);
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++) m[y * w + x] = 1;
+        return m;
+    }
+
+    public static byte[] RasterizeEllipse(SKRect bounds, int w, int h)
+    {
+        var m = new byte[w * h];
+        int x0 = Math.Clamp((int)MathF.Floor(bounds.Left), 0, w), x1 = Math.Clamp((int)MathF.Ceiling(bounds.Right), 0, w);
+        int y0 = Math.Clamp((int)MathF.Floor(bounds.Top), 0, h), y1 = Math.Clamp((int)MathF.Ceiling(bounds.Bottom), 0, h);
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+                if (EllipseContains(bounds, new SKPoint(x + 0.5f, y + 0.5f))) m[y * w + x] = 1;
+        return m;
+    }
+
+    public static byte[] RasterizePolygon(IList<SKPoint> poly, int w, int h)
+    {
+        var m = new byte[w * h];
+        if (poly == null || poly.Count < 3) return m;
+        var bb = PolygonBounds(poly);
+        int x0 = Math.Clamp((int)MathF.Floor(bb.Left), 0, w), x1 = Math.Clamp((int)MathF.Ceiling(bb.Right), 0, w);
+        int y0 = Math.Clamp((int)MathF.Floor(bb.Top), 0, h), y1 = Math.Clamp((int)MathF.Ceiling(bb.Bottom), 0, h);
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+                if (PointInPolygon(poly, new SKPoint(x + 0.5f, y + 0.5f))) m[y * w + x] = 1;
+        return m;
+    }
+
+    /// <summary>Rasterize the document's current selection at doc resolution.</summary>
+    public static byte[] CurrentMask(Document doc)
+    {
+        int w = doc.Width, h = doc.Height;
+        if (doc.Selection is not SKRect r || w <= 0 || h <= 0) return new byte[Math.Max(0, w * h)];
+        if (doc.SelKind == SelectionKind.Wand && doc.SelectionMask != null &&
+            doc.SelectionMaskW == w && doc.SelectionMaskH == h)
+            return (byte[])doc.SelectionMask.Clone();
+        return doc.SelKind switch
+        {
+            SelectionKind.Ellipse => RasterizeEllipse(r, w, h),
+            SelectionKind.Freehand or SelectionKind.Polygon =>
+                doc.SelectionPolygon != null && doc.SelectionPolygon.Count >= 3
+                    ? RasterizePolygon(doc.SelectionPolygon, w, h) : RasterizeRect(r, w, h),
+            _ => RasterizeRect(r, w, h),
+        };
+    }
+
+    static SKRect MaskBounds(byte[] m, int w, int h)
+    {
+        int x0 = w, y0 = h, x1 = 0, y1 = 0;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (m[y * w + x] != 0) { x0 = Math.Min(x0, x); y0 = Math.Min(y0, y); x1 = Math.Max(x1, x + 1); y1 = Math.Max(y1, y + 1); }
+        return x1 <= x0 ? SKRect.Empty : new SKRect(x0, y0, x1, y1);
+    }
+
+    /// <summary>Combine a new outline mask with the current selection (Mac SelectionMode).
+    /// Empty result clears the selection (explicit empty, edits touch nothing).</summary>
+    public static void ApplyMask(Document doc, byte[] fresh, SelectionKind kind, List<SKPoint> polygon, SelectionMode mode)
+    {
+        int w = doc.Width, h = doc.Height;
+        if (w <= 0 || h <= 0 || fresh == null || fresh.Length != w * h) return;
+        byte[] result;
+        if (doc.Selection == null)
+        {
+            if (mode == SelectionMode.Subtract) return;   // nothing to subtract from
+            result = fresh;
+        }
+        else if (mode == SelectionMode.Replace)
+            result = fresh;
+        else
+        {
+            var cur = CurrentMask(doc);
+            result = new byte[w * h];
+            if (mode == SelectionMode.Add)
+                for (int i = 0; i < result.Length; i++) result[i] = (cur[i] != 0 || fresh[i] != 0) ? (byte)1 : (byte)0;
+            else
+                for (int i = 0; i < result.Length; i++) result[i] = (cur[i] != 0 && fresh[i] == 0) ? (byte)1 : (byte)0;
+        }
+        var bb = MaskBounds(result, w, h);
+        if (bb.IsEmpty) { doc.ClearSelection(); return; }
+        doc.Selection = bb;
+        doc.SelKind = kind;
+        doc.SelectionPolygon = (kind is SelectionKind.Freehand or SelectionKind.Polygon) ? polygon : null;
+        if (kind == SelectionKind.Wand) { doc.SelectionMask = result; doc.SelectionMaskW = w; doc.SelectionMaskH = h; }
+        else { doc.SelectionMask = null; doc.SelectionMaskW = doc.SelectionMaskH = 0; }
+    }
+
+    public static void SetRectSelection(Document doc, SKRect rect, SelectionMode mode, SelectionKind kind = SelectionKind.Rectangle)
+    {
+        rect.Intersect(new SKRect(0, 0, doc.Width, doc.Height));
+        if (rect.Width < 1 || rect.Height < 1)
+        {
+            if (mode == SelectionMode.Replace) doc.ClearSelection();
+            return;
+        }
+        var fresh = kind == SelectionKind.Ellipse
+            ? RasterizeEllipse(rect, doc.Width, doc.Height)
+            : RasterizeRect(rect, doc.Width, doc.Height);
+        ApplyMask(doc, fresh, kind, null, mode);
+        // Keep the dragged box as the bounds for rect/ellipse (pixel-snapped, no raster wobble).
+        // Replace-only: Add/Subtract keep the combined mask bounds (incl. cleared=null).
+        if (mode == SelectionMode.Replace && doc.Selection != null) { doc.Selection = rect; doc.SelKind = kind; }
+    }
+
+    /// <summary>Confirm a freehand/polygon draft (Enter / double-click). Tiny drafts are ignored.</summary>
+    public static bool ConfirmPolygon(Document doc, IList<SKPoint> points, SelectionMode mode, SelectionKind kind)
+    {
+        if (points == null || points.Count < 3) return false;
+        var bb = PolygonBounds(points);
+        if (bb.Width < 3 || bb.Height < 3) return false;
+        var fresh = RasterizePolygon(points, doc.Width, doc.Height);
+        ApplyMask(doc, fresh, kind, new List<SKPoint>(points), mode);
+        return doc.Selection != null;
+    }
+
+    // ---------- Magic Wand (WandPixels.c wand_mask port, C#) ----------
+
+    static bool WandMatches(SKColor p, int[] reference, int tolerance) =>
+        Math.Abs(p.Red - reference[0]) <= tolerance &&
+        Math.Abs(p.Green - reference[1]) <= tolerance &&
+        Math.Abs(p.Blue - reference[2]) <= tolerance &&
+        Math.Abs(p.Alpha - reference[3]) <= tolerance;
+
+    /// <summary>Flood-fill / global match on a doc-sized sample (Mac wand_mask port).
+    /// radius = sample box radius (Mac WandSampleSize.radius), tolerance 0..255 per channel.</summary>
+    public static (byte[] mask, int count) WandMask(SKBitmap sample, int seedX, int seedY, int radius, int tolerance, bool contiguous)
+    {
+        int w = sample.Width, h = sample.Height;
+        var mask = new byte[w * h];
+        if (w <= 0 || h <= 0 || seedX < 0 || seedY < 0 || seedX >= w || seedY >= h) return (mask, 0);
+        var pixels = sample.Pixels;   // single managed copy (unpremultiplied RGBA)
+        int x0 = Math.Max(0, seedX - radius), x1 = Math.Min(w - 1, seedX + radius);
+        int y0 = Math.Max(0, seedY - radius), y1 = Math.Min(h - 1, seedY + radius);
+        long[] sums = new long[4]; long samples = 0;
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                var c = pixels[y * w + x];
+                sums[0] += c.Red; sums[1] += c.Green; sums[2] += c.Blue; sums[3] += c.Alpha;
+                samples++;
+            }
+        int[] reference = new int[4];
+        for (int c = 0; c < 4; c++) reference[c] = (int)((sums[c] + samples / 2) / Math.Max(1, samples));
+
+        int count = 0;
+        if (!contiguous)
+        {
+            for (int i = 0; i < pixels.Length; i++)
+                if (WandMatches(pixels[i], reference, tolerance)) { mask[i] = 1; count++; }
+            return (mask, count);
+        }
+        // Scanline flood fill (same shape as wand_mask: run fill + one seed per run above/below).
+        var stack = new Stack<(int x, int y)>();
+        stack.Push((seedX, seedY));
+        while (stack.Count > 0)
+        {
+            var (x, y) = stack.Pop();
+            int row = y * w;
+            if (mask[row + x] != 0 || !WandMatches(pixels[row + x], reference, tolerance)) continue;
+            int left = x, right = x;
+            while (left > 0 && mask[row + left - 1] == 0 && WandMatches(pixels[row + left - 1], reference, tolerance)) left--;
+            while (right + 1 < w && mask[row + right + 1] == 0 && WandMatches(pixels[row + right + 1], reference, tolerance)) right++;
+            for (int i = left; i <= right; i++) mask[row + i] = 1;
+            count += right - left + 1;
+            for (int side = 0; side < 2; side++)
+            {
+                if (side == 0 ? y == 0 : y + 1 >= h) continue;
+                int ny = side == 0 ? y - 1 : y + 1, nrow = ny * w;
+                bool inRun = false;
+                for (int nx = left; nx <= right; nx++)
+                {
+                    bool candidate = mask[nrow + nx] == 0 && WandMatches(pixels[nrow + nx], reference, tolerance);
+                    if (candidate && !inRun) stack.Push((nx, ny));
+                    inRun = candidate;
+                }
+            }
+        }
+        return (mask, count);
+    }
+
+    /// <summary>Run the wand at a document point against a doc-sized sample bitmap
+    /// (active layer or full composite for sampleAllLayers). Returns matched pixel count.</summary>
+    public static int WandSelect(Document doc, SKBitmap sample, SKPoint docPoint, int tolerance, int sampleRadius, bool contiguous, SelectionMode mode)
+    {
+        if (sample == null) return 0;
+        int sx = (int)MathF.Floor(docPoint.X), sy = (int)MathF.Floor(docPoint.Y);
+        // Map doc px -> sample px when sizes match; otherwise require doc-sized samples.
+        if (sample.Width != doc.Width || sample.Height != doc.Height) return 0;
+        tolerance = Math.Clamp(tolerance, 0, 255);
+        sampleRadius = Math.Clamp(sampleRadius, 0, 2);
+        var (mask, count) = WandMask(sample, sx, sy, sampleRadius, tolerance, contiguous);
+        if (count == 0)
+        {
+            if (mode == SelectionMode.Replace) doc.ClearSelection();
+            return 0;
+        }
+        ApplyMask(doc, mask, SelectionKind.Wand, null, mode);
+        return count;
+    }
+
+    // ---------- pixel edits inside the selection ----------
+
+    static void DocToLayer(Layer l, float dx, float dy, out float lx, out float ly)
+    {
+        float s = Math.Max(1e-6f, l.Scale);
+        lx = (dx - l.Position.X) / s; ly = (dy - l.Position.Y) / s;
+    }
+
+    /// <summary>Delete: selection pixels become transparent (Mac clearSelectedPixels).
+    /// No selection handled by the caller (layer delete). Returns cleared pixel count.</summary>
+    public static int DeleteSelection(Document doc, Layer layer)
+    {
+        if (layer?.Bitmap == null || doc.Selection == null) return 0;
+        Document.EnsureUniqueBitmap(layer);
+        var bmp = layer.Bitmap;
+        int cleared = 0;
+        if (doc.SelKind == SelectionKind.Rectangle)
+        {
+            DocToLayer(layer, doc.Selection.Value.Left, doc.Selection.Value.Top, out float x0, out float y0);
+            DocToLayer(layer, doc.Selection.Value.Right, doc.Selection.Value.Bottom, out float x1, out float y1);
+            using var canvas = new SKCanvas(bmp);
+            using var paint = new SKPaint { BlendMode = SKBlendMode.Clear };
+            canvas.DrawRect(new SKRect(x0, y0, x1, y1), paint);
+            cleared = Math.Max(0, (int)((x1 - x0) * (y1 - y0)));
+            return cleared;
+        }
+        var mask = CurrentMask(doc);
+        for (int y = 0; y < doc.Height; y++)
+            for (int x = 0; x < doc.Width; x++)
+            {
+                if (mask[y * doc.Width + x] == 0) continue;
+                DocToLayer(layer, x + 0.5f, y + 0.5f, out float lx, out float ly);
+                int ix = (int)MathF.Floor(lx), iy = (int)MathF.Floor(ly);
+                if (ix < 0 || iy < 0 || ix >= bmp.Width || iy >= bmp.Height) continue;
+                bmp.SetPixel(ix, iy, SKColor.Empty);
+                cleared++;
+            }
+        return cleared;
+    }
+
+    /// <summary>Copy the selected pixels cropped to the selection bounds (Mac renderSelectedPixels
+    /// subset: single layer, hard mask). Returns bitmap + doc-px origin for paste-in-place.</summary>
+    public static (SKBitmap bmp, SKPoint origin)? CopySelection(Document doc, Layer layer)
+    {
+        if (layer?.Bitmap == null || doc.Selection == null) return null;
+        var r = doc.Selection.Value;
+        int x0 = Math.Clamp((int)MathF.Floor(r.Left), 0, doc.Width), x1 = Math.Clamp((int)MathF.Ceiling(r.Right), 0, doc.Width);
+        int y0 = Math.Clamp((int)MathF.Floor(r.Top), 0, doc.Height), y1 = Math.Clamp((int)MathF.Ceiling(r.Bottom), 0, doc.Height);
+        if (x1 <= x0 || y1 <= y0) return null;
+        var bmp = new SKBitmap(x1 - x0, y1 - y0, SKColorType.Bgra8888, SKAlphaType.Premul);
+        bmp.Erase(SKColor.Empty);
+        var mask = doc.SelKind == SelectionKind.Rectangle ? null : CurrentMask(doc);
+        var src = layer.Bitmap;
+        for (int y = y0; y < y1; y++)
+            for (int x = x0; x < x1; x++)
+            {
+                if (mask != null && mask[y * doc.Width + x] == 0) continue;
+                DocToLayer(layer, x + 0.5f, y + 0.5f, out float lx, out float ly);
+                int ix = (int)MathF.Floor(lx), iy = (int)MathF.Floor(ly);
+                if (ix < 0 || iy < 0 || ix >= src.Width || iy >= src.Height) continue;
+                bmp.SetPixel(x - x0, y - y0, src.GetPixel(ix, iy));
+            }
+        return (bmp, new SKPoint(x0, y0));
+    }
+
+    // ---------- floating pixel move (Mac PixelMove subset, translate only) ----------
+
+    /// <summary>Start moving selected pixels (Mac beginPixelMove subset).
+    /// Cuts the outline to a floating raster unless duplicate (Alt-drag copy).</summary>
+    public static FloatingSelection BeginPixelMove(Document doc, Layer layer, bool duplicate)
+    {
+        if (layer?.Bitmap == null || doc.Selection == null) return null;
+        var copied = CopySelection(doc, layer);
+        if (copied == null) return null;
+        Document.EnsureUniqueBitmap(layer);
+        if (!duplicate) DeleteSelection(doc, layer);
+        return new FloatingSelection { Pixels = copied.Value.bmp, Origin = copied.Value.origin, Offset = new SKPoint(0, 0), Duplicate = duplicate };
+    }
+
+    public static void MoveFloating(FloatingSelection f, float dx, float dy)
+    {
+        if (f == null) return;
+        f.Offset = new SKPoint(f.Offset.X + dx, f.Offset.Y + dy);
+    }
+
+    /// <summary>Commit: composite the floating raster at origin+offset (Mac mergeFloatingTransform subset).</summary>
+    public static void CommitPixelMove(Document doc, Layer layer, FloatingSelection f)
+    {
+        if (f?.Pixels == null || layer?.Bitmap == null) return;
+        Document.EnsureUniqueBitmap(layer);
+        using var canvas = new SKCanvas(layer.Bitmap);
+        float ox = f.Origin.X + f.Offset.X - layer.Position.X, oy = f.Origin.Y + f.Offset.Y - layer.Position.Y;
+        float s = Math.Max(1e-6f, layer.Scale);
+        canvas.DrawBitmap(f.Pixels, new SKRect(ox / s, oy / s, (ox + f.Pixels.Width) / s, (oy + f.Pixels.Height) / s));
+        // The selection frame travels with the pixels.
+        if (doc.Selection is SKRect r)
+            doc.Selection = new SKRect(r.Left + f.Offset.X, r.Top + f.Offset.Y, r.Right + f.Offset.X, r.Bottom + f.Offset.Y);
+        if (doc.SelectionPolygon != null)
+            for (int i = 0; i < doc.SelectionPolygon.Count; i++)
+                doc.SelectionPolygon[i] = new SKPoint(doc.SelectionPolygon[i].X + f.Offset.X, doc.SelectionPolygon[i].Y + f.Offset.Y);
+        doc.SelectionMask = null; doc.SelectionMaskW = doc.SelectionMaskH = 0;
+    }
+
+    /// <summary>Cancel: put cut pixels back (no-op for duplicates). Caller Undos the cut for exact restore.</summary>
+    public static void CancelPixelMove(Document doc, Layer layer, FloatingSelection f)
+    {
+        if (f?.Pixels == null || layer?.Bitmap == null) return;
+        if (f.Duplicate) return;
+        Document.EnsureUniqueBitmap(layer);
+        using var canvas = new SKCanvas(layer.Bitmap);
+        float ox = f.Origin.X - layer.Position.X, oy = f.Origin.Y - layer.Position.Y;
+        float s = Math.Max(1e-6f, layer.Scale);
+        canvas.DrawBitmap(f.Pixels, new SKRect(ox / s, oy / s, (ox + f.Pixels.Width) / s, (oy + f.Pixels.Height) / s));
     }
 }
