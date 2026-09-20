@@ -22,10 +22,12 @@ powershell -ExecutionPolicy Bypass -File tools\Make-Release.ps1 -Version v1.0.0-
 ```
 
 ## 使い方 (概要)
-- 上=ツールバー (Undo/Redo・Copy/Paste・Move/Hand・ズーム)、左=レイヤーパネル、右=キャンバス。
-- `New`→`Import` (PNG/JPG/BMP) でレイヤー追加→ドラッグで非破壊移動→`Export PNG` で書出し。
+- 上=ツールバー (Undo/Redo・Copy/Paste・ズーム・保存開封・書出し)、左=工具レール、右=層・調整・ブラシパネル、中央=キャンバス。
+- `New Canvas`（寸法・背景）→`Import` (PNG/JPG/BMP/WebP) でレイヤー追加→ドラッグで非破壊移動→`Save` (.comp)・`Export PNG`/`Export JPEG`（画質・背景・マット）で書出し。
+- 前景/背景色はFG/BGボタン→Color Picker（H/S/B・RGB・hex）。X=入替・D=初期化。`Ctrl+Shift+C`=結合コピー。
+- `.comp` は `manifest.json`＋`images/` のパッケージフォルダ（v1-7読込/v7書出）。HEIC/TIFFは復号器なしのため「未対応形式」と明示（PNG/JPEGへ変換）。
 - 詳しくは [5分チュートリアル](docs/TUTORIAL.md)。操作画面は [スクリーンショット](docs/screenshots/README.md)。
-- ショートカット: V=Move H=Hand Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+N/O/E Del。
+- ショートカット: V=Move H=Hand Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+Shift+C=結合コピー Ctrl+S=保存 Ctrl+N/O/E Del X/D=色入替/初期化。
 
 ## 上流ライセンス継承
 - 上流: Mac版 Compositor（MIT License, Copyright (c) 2026 Wonder Assembly LLC）
@@ -51,9 +53,9 @@ dotnet publish src/Compositor.Avalonia -c Release -r win-x64 --self-contained tr
 配置: `src/publish-win/` → `C:\Users\<user>\Apps\Compositor\`（上書き前に taskkill /IM Compositor.exe /F）
 
 ## テスト
-- 単体8件＋性能2件＝10件合格（`dotnet test`）。
+- 単体158件合格（`dotnet test`・文書系18件含む：保存往復・検証・JPEG・調色板・HEIC/TIFF探知）。
 - 性能実測（WSL, 2026-09-20）: 4K 3レイヤー合成 94ms／1000回合成ストレス 965ms・メモリ +373KB（リークなし目安50MB未満）。
-- ショートカット: V=Move H=Hand Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+N/O/E Del。
+- ショートカット: V=Move H=Hand Ctrl+Z/Y=Undo/Redo Ctrl+C/V=Copy/Paste Ctrl+Shift+C=結合コピー Ctrl+S=保存 Ctrl+N/O/E Ctrl+D Del X/D Arrows=nudge。
 
 ## 配布
 - `tools/Make-Release.ps1` で `src/publish-win` 自己完結出力を LICENSE.txt/README.md 同梱でzip化＋SHA256発行 (`dist/`)。

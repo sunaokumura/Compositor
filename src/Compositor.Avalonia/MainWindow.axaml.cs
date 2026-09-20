@@ -200,6 +200,7 @@ public partial class MainWindow : Window
         }
         RenderCanvas();
         UpdateUndoButtons();
+        RefreshDocTabs();
     }
 
     void UpdateUndoButtons()
@@ -886,14 +887,17 @@ public partial class MainWindow : Window
 
     async System.Threading.Tasks.Task ImportAsync()
     {
-        var dlg = new OpenFileDialog { Filters = { new FileDialogFilter { Name = "Images", Extensions = { "png", "jpg", "jpeg", "bmp" } } } };
+        var dlg = new OpenFileDialog { Filters = { new FileDialogFilter { Name = "Images", Extensions = { "png", "jpg", "jpeg", "bmp", "webp", "heic", "heif", "tiff", "tif" } } } };
         var files = await dlg.ShowAsync(this);
         if (files is not { Length: > 0 }) return;
-        SKBitmap src;
-        try { src = SKBitmap.Decode(files[0]); }
-        catch (Exception ex) { await new MessageWindow("読み込み失敗: " + ex.Message).ShowDialog(this); return; }
-        if (src == null) { await new MessageWindow("デコードできませんでした: " + files[0]).ShowDialog(this); return; }
-        AddLayerBitmap(src, System.IO.Path.GetFileNameWithoutExtension(files[0]));
+        var res = ImageImport.DecodeFile(files[0], ImageImport.MaxPixels - ImageImport.DocumentPixels(doc));
+        if (res.Bitmap == null)
+        {
+            await new MessageWindow((res.Unsupported ? "未対応形式: " : "読み込み失敗: ") + (res.Error ?? files[0])).ShowDialog(this);
+            res.Bitmap?.Dispose();
+            return;
+        }
+        ImportDecoded(res.Bitmap, res.Name);
     }
 
     void AddLayerBitmap(SKBitmap src, string name, SKPoint? position = null)
@@ -1539,6 +1543,8 @@ public partial class MainWindow : Window
                 DoRedo(); e.Handled = true; break;
             case Key.Z when mods.HasFlag(KeyModifiers.Control):
                 DoUndo(); e.Handled = true; break;
+            case Key.C when mods.HasFlag(KeyModifiers.Control) && mods.HasFlag(KeyModifiers.Shift):
+                _ = DoCopyMerged(); e.Handled = true; break;
             case Key.C when mods.HasFlag(KeyModifiers.Control):
                 _ = DoCopy(); e.Handled = true; break;
             case Key.V when mods.HasFlag(KeyModifiers.Control):
@@ -1549,6 +1555,12 @@ public partial class MainWindow : Window
                 OnImport(null, null); e.Handled = true; break;
             case Key.E when mods.HasFlag(KeyModifiers.Control):
                 OnExport(null, null); e.Handled = true; break;
+            case Key.S when mods.HasFlag(KeyModifiers.Control):
+                _ = SaveAsync(asNew: false); e.Handled = true; break;
+            case Key.X when mods == KeyModifiers.None:
+                palette.Swap(); SyncPalettePanel(); RefreshToolHeader(); e.Handled = true; break;
+            case Key.D when mods == KeyModifiers.None:
+                palette.Reset(); SyncPalettePanel(); RefreshToolHeader(); e.Handled = true; break;
         }
         base.OnKeyDown(e);
     }
@@ -1563,15 +1575,14 @@ public partial class MainWindow : Window
 
     SKColor BrushPaintColor()
     {
-        int i = BrushColorBox?.SelectedIndex ?? 0;
-        if (hasPickedColor && i == BrushColors.Count - 1) return pickedColor;
-        if (i >= 0 && i < BrushColors.Count) return BrushColors[i].Color;
-        return SKColors.Black;
+        // Foreground color (Mac foregroundColor subset); mask mode paints white/black via MaskOps path.
+        return palette.PaintColor(false).ToSK();
     }
 
     void PickColor(SKColor c)
     {
         pickedColor = new SKColor(c.Red, c.Green, c.Blue, 255);
+        palette.Set(PaletteColor.FromSK(pickedColor).Quantized, background: false);
         if (!hasPickedColor)
         {
             hasPickedColor = true;

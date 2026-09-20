@@ -49,6 +49,7 @@ public class Layer
     public bool MaskSelected;          // true = paint targets the mask (Mac isMaskSelected)
     public Guid? ClipSourceId;         // live/clipping mask base (Mac maskSourceID)
     public ShapeInfo Shape;            // shape style metadata (raster layer; Mac LayerShape subset)
+    public float FolderW, FolderH;     // group transform size in doc px (Mac group transform.size; 0 = doc size at creation)
 
     public SKRect Bounds => Bitmap == null ? SKRect.Empty : SKRect.Create(Position.X, Position.Y, Bitmap.Width * ScaleX, Bitmap.Height * ScaleY);
     public bool HitTest(SKPoint p) => Bitmap != null && Bounds.Contains(p.X, p.Y);
@@ -68,6 +69,7 @@ public class LayerSnapshot
         public byte[] MaskRef; public int MaskW, MaskH;   // copy-on-write anchor (see EnsureUniqueMask)
         public bool MaskEnabled, MaskLinked, MaskSelected; public SKPoint MaskOffset;
         public Guid? ClipSourceId; public ShapeInfo Shape;
+        public float FolderW, FolderH;
         public string Name; public bool Visible; public bool Locked;
         public float Opacity, ScaleX, ScaleY; public SKPoint Position; public SKBlendMode Blend;
         public LayerSampling Sampling;
@@ -78,16 +80,23 @@ public class LayerSnapshot
     public List<Item> Items = new();
     public int Width, Height;
     public string DocName = "Untitled";
+    public Guid DocumentId = Guid.NewGuid();
+    public double Resolution = 72;
+    public Guid? ActiveLayerId;
+    public bool IsModified;
 
     public static LayerSnapshot Capture(Document doc)
     {
-        var s = new LayerSnapshot { Width = doc.Width, Height = doc.Height, DocName = doc.Name };
+        var s = new LayerSnapshot { Width = doc.Width, Height = doc.Height, DocName = doc.Name,
+            DocumentId = doc.DocumentId, Resolution = doc.Resolution,
+            ActiveLayerId = doc.ActiveLayerId, IsModified = doc.IsModified };
         foreach (var l in doc.Layers)
             s.Items.Add(new Item { Layer = l, BitmapRef = l.Bitmap, Name = l.Name, Visible = l.Visible, Locked = l.Locked,
                 Id = l.Id, ParentId = l.ParentId, IsGroup = l.IsGroup,
                 MaskRef = l.Mask, MaskW = l.MaskW, MaskH = l.MaskH,
                 MaskEnabled = l.MaskEnabled, MaskLinked = l.MaskLinked, MaskSelected = l.MaskSelected,
                 MaskOffset = l.MaskOffset, ClipSourceId = l.ClipSourceId, Shape = l.Shape?.Clone(),
+                FolderW = l.FolderW, FolderH = l.FolderH,
                 Opacity = l.Opacity, ScaleX = l.ScaleX, ScaleY = l.ScaleY, Position = l.Position, Blend = l.Blend,
                 Sampling = l.Sampling,
                 Rotation = l.Rotation, FlipH = l.FlipH, FlipV = l.FlipV,
@@ -100,6 +109,8 @@ public class LayerSnapshot
     public void Restore(Document doc)
     {
         doc.Width = Width; doc.Height = Height; doc.Name = DocName;
+        doc.DocumentId = DocumentId; doc.Resolution = Resolution;
+        doc.ActiveLayerId = ActiveLayerId; doc.IsModified = IsModified;
         doc.Layers.Clear();
         foreach (var it in Items)
         {
@@ -109,6 +120,7 @@ public class LayerSnapshot
             it.Layer.MaskEnabled = it.MaskEnabled; it.Layer.MaskLinked = it.MaskLinked;
             it.Layer.MaskSelected = it.MaskSelected; it.Layer.MaskOffset = it.MaskOffset;
             it.Layer.ClipSourceId = it.ClipSourceId; it.Layer.Shape = it.Shape?.Clone();
+            it.Layer.FolderW = it.FolderW; it.Layer.FolderH = it.FolderH;
             it.Layer.Name = it.Name; it.Layer.Visible = it.Visible; it.Layer.Locked = it.Locked;
             it.Layer.Opacity = it.Opacity; it.Layer.ScaleX = it.ScaleX; it.Layer.ScaleY = it.ScaleY; it.Layer.Position = it.Position;
             it.Layer.Blend = it.Blend; it.Layer.Sampling = it.Sampling;
@@ -134,6 +146,7 @@ public class UndoStack
         undo.Add(LayerSnapshot.Capture(doc));
         if (undo.Count > Limit) undo.RemoveAt(0);
         redo.Clear();
+        if (doc != null) doc.IsModified = true;
         Changed?.Invoke();
     }
 
@@ -165,6 +178,19 @@ public class Document
     public int Width;
     public int Height;
     public string Name = "Untitled";
+    public Guid DocumentId = Guid.NewGuid();
+    public double Resolution = 72;      // pixels/inch, 1..9600 (Mac CanvasDocument.resolution; default 72)
+    public string ProjectPath;          // .comp package directory path; null = unsaved
+    public Guid? ActiveLayerId;         // active layer (Mac activeLayerID; round-trips in manifest)
+    public bool IsModified;             // set by UndoStack.Push; cleared by save/load (Mac history.isModified)
+    /// <summary>Mark the document saved (Mac history.markSaved subset).</summary>
+    public void MarkSaved() => IsModified = false;
+    /// <summary>Geometry limit shared with NewCanvas (Mac CanvasDocument.validDimension).</summary>
+    public static int? ValidDimension(string value)
+    {
+        if (!int.TryParse((value ?? "").Trim(), out int n)) return null;
+        return (n >= 1 && n <= 30_000) ? n : (int?)null;
+    }
     public List<Layer> Layers = new();   // bottom-up order
     /// <summary>Marquee selection bounds in document px (Mac DocumentSelection subset: rect + ellipse bbox).</summary>
     /// null = no selection (whole canvas). The outline kind and vector/mask detail live in

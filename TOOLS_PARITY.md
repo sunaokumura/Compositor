@@ -1,4 +1,4 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_fab05a0a時点）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_e1a8b05e時点）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
@@ -16,7 +16,7 @@
 |---|---|---|
 | Selection.swift（パス選択・選択範囲クリップ） | Document.Selection＋SelKind/Polygon/Mask（矩形/楕円/投繩/多角＋破線・rubber-band・ブラシ制限） | △（アンチエイリアス・パス演算なし） |
 | SelectionEdits.swift | Marquee作成（Shift正方形・Alt中心・加減算）・枠移動・Ctrl+D解除・Delete範囲消去 | △（Expand/Contractなし） |
-| SelectionClipboard.swift（選択コピー/結合コピー） | Copy選択切抜き＋原位置Paste（単層・マスク抜き） | △（結合コピーなし） |
+| SelectionClipboard.swift（選択コピー/結合コピー） | Copy選択切抜き＋原位置Paste（単層・マスク抜き）＋Copy Merged結合コピー（可視合成全体をPNGでClipboardへ・Ctrl+Shift+C） | △（結合貼付なし） |
 | MagicWand.swift | SelectionTools.WandMask（tolerance・contiguous・sampleAllLayers、WandPixels.c相当flood fill C#化） | △（sample size固定・詳細アウトラインなし） |
 | FloatingSelection.swift（フローティング選択） | FloatingSelection（切出し移動・複写・Enter確定・Esc取消・矢印nudge） | △（変形ハンドルなし・移動のみ） |
 | MaskTracing.swift | — | × |
@@ -61,10 +61,25 @@
 | LayerMask.swift / LiveLayerMask.swift | MaskOps（白/黒追加・選択から作成・描画/充填/反転/ぼかし羽化・有効切替・覆面選択描画・連結/解除＋矢印単独移動・結合焼込）＋ClipOps（切抜覆面：設定/解除・切替・adopt/detach・DstIn描画・[M][M*][C]表示） | △（配置変形は層内offset近似・歪み焼込・Option-drag複写・サムネイルなし・bakeダイアログなし） |
 | LayerAppearance.swift（不透明度/表示） | Opacity/Visible/Blend16種 | ○ |
 | DocumentHistory.swift | UndoStack（上限100・ドラッグ/ストローク/スライダー単位・COW対応） | ○（選択は履歴対象外＝Photoshop同様） |
-| ColorPalette.swift | BrushColorBox（6色プリセット＋スポイト採取Picked枠）・Eyedropperツール(I・All Layers切替・Alt-click採取） | △（パレット編集・マスク塗り分けなし） |
-| ProjectWorkspace.swift / EditorSession+Projects.swift / EditorSession.swift | ドキュメントタブ（複数Doc切替・タブ毎Undo） | △（プロジェクト保存なし） |
+| ColorPalette.swift | PaletteState（FG/BG・12色+追加/削除・X入替・D初期化・HSBピッカー・RGB/hex・Quantized・覆面塗り分け白/黒）＋Eyedropperツール(I・All Layers切替・Alt-click採取・FG連動）＋FG/BGボタン・PaletteBox | △（パレット永続化・GradientMap端色連動なし） |
+| ProjectWorkspace.swift / EditorSession+Projects.swift / EditorSession.swift | ドキュメントタブ（複数Doc切替・タブ毎Undo・•未保存ドット・文書表題改名DocNameBox）＋ProjectFormat（.comp保存開封 v1-7読込/v7書出・層/覆面v4/群v2/切抜v5/フォルダ覆面v6/調整層v7往復・検証・原子置換・7試験）＋NewCanvas（寸法1-30000検証・背景 透明/白/黒） | △（折畳みUI・ドラッグ並替・タブ間層複写なし） |
+
+## 入出力・文書UI系（Mac IO/*.swift＋UI Sheet subset・42件外の別枠整理）
+
+Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42件の集計には含めない。
+
+| Mac | Windows | 状態 |
+|---|---|---|
+| ProjectStore.swift（.comp保存開封・検証） | ProjectFormat（manifest v1-7読込/v7書出・層/覆面v4/群v2/切抜v5/フォルダ覆面v6/調整層v7・検証・原子置換・PNG資産・7試験） | △（Mac調整値の完全互換なし・調整はWindows設定の往復・CIImage由来画素の厳密一致なし） |
+| ProjectController.swift（保存/開封/書出フロー） | Save/SaveAs/Open（ConfirmWindowで保存確認・開封前検証・破損時は現文書維持） | △（タブ毎quit順確認・最近使った項目・セキュリティスコープなし） |
+| ImageExporter.swift（PNG/JPEG） | PNG書出（既存）＋JpegExport（画質0-1・マット白/黒/灰・<=1000px encoded preview・進捗表示・解像度メタ未書込＝画素のみ） | △（解像度DPIメタ・プログレス取消の厳密性なし） |
+| ImageImporter.swift（JPEG/PNG/HEIC/TIFF） | ImageImport（PNG/JPG/BMP/WebP復号・HEIC/HEIF/TIFFは拡張子/署名で探知して「未対応形式」と明示・100MP/30k予算・2試験） | △（HEIC/TIFF復号器なし・文書化のみ） |
+| NewCanvasSheet.swift | NewCanvasWindow（寸法1-30000検証・背景 透明/白/黒・作成） | △（クリップボード寸法提案・Open/Import導線なし） |
+| JPEGExportSheet.swift | JpegExportWindow（画質スライダ・live encoded preview相当・バイト数表示・進捗バー・画質記憶は次回起動に残らない） | △（画質のUserDefaults永続化なし） |
+| ColorPickerSheet.swift / ColorPaletteControls.swift | ColorPickerWindow（H/S/B・RGB・hex・preview）＋FG/BG・X入替・D初期化・覆面時は白/黒選択 | △（フローティングパネル・キャンバスクリック採取・GradientMap端色連動なし） |
+| ProjectTabs.swift | DocTabs（切替・•未保存ドット・DocNameBox改名） | △（ドラッグ受付・閉じる×・折畳みなし） |
 
 ## 集計（42件＝41 Swift＋Gradient工具行の分割1）
 - ○ 15件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / LayerTransform（数値入力・Sampling含む） / Distort / CanvasSize / Crop / ImageSize（＋部分含め実用中核）＋本カードでShape / Gradient工具 / LayerMerge（Down拡張＋Group結合）を追加
-- △ 20件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作（＋前カードでCurves/Levels/GradientMap/Exposure/Grain/Noise/Lens/Blur外広がり/調整層のエンジンを追加・シートUIは次段階＋本カードで層覆面/フォルダ/切抜覆面/ContentFill近似を追加）
+- △ 20件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作（＋前カードでCurves/Levels/GradientMap/Exposure/Grain/Noise/Lens/Blur外広がり/調整層のエンジンを追加・層覆面/フォルダ/切抜覆面/ContentFill近似を追加＋本カードで計画書保存開封・JPEG出力・結合コピー・FG/BG調色板・タブ標識を追加）
 - × 7件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（SubjectRemoval/GuidedMatte/調整シートUI等。Curves/Levels/GradientMapの無効ボタンはシートUI用に残置・エンジンは△欄参照。Shape/Gradient/ContentFill/Mask/Group/Clipは対応済みのためバッジ解除・Fボタン有効化）

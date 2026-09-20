@@ -32,6 +32,9 @@
 | Ctrl+Z | Undo |
 | Ctrl+Y / Ctrl+Shift+Z | Redo |
 | Ctrl+C / Ctrl+V | Copy / Paste（選択あり=範囲切抜き＋原位置貼付・なし=レイヤー単位） |
+| Ctrl+Shift+C | Copy Merged結合コピー（可視合成全体） |
+| Ctrl+S | 計画書(.comp)保存 |
+| X / D | 前景/背景の入替・初期化（黒/白・覆面編集中は白/黒切替） |
 | Ctrl+N | 新ドキュメントタブ |
 | Ctrl+O | Import |
 | Ctrl+E | Export PNG |
@@ -42,4 +45,4 @@
 | ←→↑↓（Shiftで10px） | 選択レイヤー微調整（nudge・Undo可・覆面編集中かつ非連結時は覆面のみ移動） |
 
 ## 未割当（Mac/Photoshopにあるが本版では対象外）
-- 結合コピー（Shift+Ctrl+C）→ 未対応（レイヤー単位コピーのみ）
+- （結合コピーは対応済み：Ctrl+Shift+C）

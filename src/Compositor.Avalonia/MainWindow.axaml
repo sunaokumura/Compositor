@@ -27,6 +27,15 @@
         <Button Content="New" Click="OnNew"/>
         <Button Content="Import" Click="OnImport" ToolTip.Tip="Ctrl+O"/>
         <Button Content="Export PNG" Click="OnExport" ToolTip.Tip="Ctrl+E"/>
+        <Button Content="Export JPEG" Click="OnExportJpeg" ToolTip.Tip="画質選択・live preview相当・進捗表示"/>
+        <Button Content="Copy Merged" Click="OnCopyMerged" ToolTip.Tip="Ctrl+Shift+C: 結合コピー"/>
+        <Separator/>
+        <Button Content="Save" Click="OnSave" ToolTip.Tip="Ctrl+S: 計画書(.comp)保存"/>
+        <Button Content="Save As" Click="OnSaveAs" ToolTip.Tip="計画書を別名保存"/>
+        <Button Content="Open .comp" Click="OnOpenProject" ToolTip.Tip="計画書(.comp)を開封"/>
+        <Button Content="New Canvas" Click="OnNewCanvas" ToolTip.Tip="寸法・背景を指定して新規画布"/>
+        <TextBox x:Name="DocNameBox" Width="120" ToolTip.Tip="文書表題"/>
+        <Button Content="Rename Doc" Click="OnRenameDoc" ToolTip.Tip="文書表題を変更"/>
       </StackPanel>
     </Border>
     <Border Grid.Row="1" Background="#252526" BorderBrush="#3E3E42" BorderThickness="0,0,0,1">
@@ -223,7 +232,21 @@
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Size" VerticalAlignment="Center"/>
               <Slider x:Name="BrushSizeSlider" Minimum="1" Maximum="200" Width="120" Value="24"/>
-              <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色"/>
+              <ComboBox x:Name="BrushColorBox" Width="100" ToolTip.Tip="ブラシ色 (旧6色・FGと連動)"/>
+            </StackPanel>
+            <TextBlock Text="Color (Mac 調色板相当: FG/BG・12色+追加・X入替・D初期化)" FontWeight="SemiBold" FontSize="12"/>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <Button x:Name="FgBtn" Content="FG" Width="44" Click="OnFgPick" ToolTip.Tip="前景色 (Color Picker)"/>
+              <Button x:Name="BgBtn" Content="BG" Width="44" Click="OnBgPick" ToolTip.Tip="背景色 (Color Picker)"/>
+              <Button Content="X" Click="OnSwapColors" ToolTip.Tip="前景/背景を入替 (X)"/>
+              <Button Content="D" Click="OnResetColors" ToolTip.Tip="黒/白に戻す (D)"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <ListBox x:Name="PaletteBox" Width="170" Height="64" SelectionChanged="OnPaletteSelected" ToolTip.Tip="調色板 (選択=前景色に設定)"/>
+              <StackPanel Spacing="4">
+                <Button Content="+" Click="OnPaletteAdd" ToolTip.Tip="前景色を調色板へ追加"/>
+                <Button Content="-" Click="OnPaletteDelete" ToolTip.Tip="選択色を削除"/>
+              </StackPanel>
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Hard" VerticalAlignment="Center" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>

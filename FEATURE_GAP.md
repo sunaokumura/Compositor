@@ -1,4 +1,4 @@
-# FEATURE_GAP — Mac版 vs Windows移植版（t_fab05a0a時点に更新）
+# FEATURE_GAP — Mac版 vs Windows移植版（t_e1a8b05e時点に更新）
 
 Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移植済み ／ △＝部分的 ／ ×＝未移植。
 詳細は TOOLS_PARITY.md（42件対応表：Gradient工具行を分割）・SHORTCUTS.md（ショートカット一覧）を参照。
@@ -20,7 +20,9 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 - Lasso自由投繩/多角投繩（rubber-band・Enter/ダブルクリック確定・Esc取消・加減算）
 - MagicWand（tolerance・contiguous・sampleAllLayers・flood fill C#化）
 - 選択内画素移動（枠移動・Ctrl切出移動・Alt複写・Enter確定・Esc取消・矢印nudge）・Delete範囲消去・Copy選択切抜き＋原位置Paste
-- Import（PNG/JPG/BMP）/ Export PNG（File.WriteAllBytes）
+- Import（PNG/JPG/BMP/WebP・HEIC/TIFFは探知して未対応明示）/ Export PNG（File.WriteAllBytes）/ Export JPEG（画質・マット・encoded preview・進捗）/ Copy Merged結合コピー（Ctrl+Shift+C）
+- 計画書保存開封（.compパッケージ・v1-7読込/v7書出・層/覆面/群/切抜/フォルダ覆面/調整層/形状/解像度/作用層往復・検証・原子置換・7試験）・NewCanvas（寸法検証・背景 透明/白/黒）・文書表題改名・タブ未保存ドット
+- 色選択全般（FG/BG・12色+追加/削除・X入替・D初期化・HSBピッカー・RGB/hex・覆面塗り分け・11試験）
 - Undo/Redo（スナップショット式・上限100・ドラッグはPressed時push・スライダーは gesture単位・選択は履歴対象外）
 - Copy/Paste（アプリ内PNG経由・Avalonia Clipboard）
 - Move/Handツール・Zoom・キャンバスドラッグ移動（HitTest＋SafeSelect＋再入ガード）
@@ -34,7 +36,7 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 - 切抜覆面（ライブマスク）: 設定/解除・切替・adopt/detach・DstIn描画まで対応。bakeダイアログなし（削除時はリンク解除）
 - フォルダ/グループ: 作成・群化・解除・階層描画・実効可視性・Up/Down移動・中身ごと削除・Merge Groupまで対応。折畳みUI・ドラッグ並替なし
 - ContentFill: 周囲平均の反復補填（決定性・小穴用）＋拡張貼付（層拡大）まで対応。Mac content_fillカーネル非搭載のため近似と文書化
-- 選択: 矩形/楕円Marquee・自由/多角Lasso・MagicWand・画素移動まで対応。結合コピー・Expand/Contract・パス演算・アンチエイリアスなし
+- 選択: 矩形/楕円Marquee・自由/多角Lasso・MagicWand・画素移動・結合コピーまで対応。Expand/Contract・パス演算・アンチエイリアスなし
 - 変形: 移動・拡縮（均一スライダー＋非均一数値）・回転・反転・歪み・数値指定・Sampling・Flip Canvas・Canvas/Image Size・Cropまで対応。複数層グループ・スナップなし
 - Distort: 角掴み・Shift軸固定・確定/取消・Flip考慮warpまで対応。live画素previewは枠表示のみ・マスク連動なし
 - 調整: Bright/Contrast/Saturation/Blur/Invertに加えCurves/Levels/GradientMap/Exposure/Hue全域/Grain/Noise/Lens/Blur外広がりのエンジン＋調整層方式まで対応（画素値試験32件）。Curves/Levels/GradientMapのシートUIは次段階（無効ボタン残置）
@@ -42,21 +44,23 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 - Clone: Alt-click採取・aligned・All Layers・stroke Undoまで対応。回転層の採取写像・採取プレビュー画像なし
 - Heal: 内容認識近似（環平均＋縁フェザー・Create Textureは粒状付加・Proximityは狭環）。完全再現（パッチ探索＋膜充填）は重量級のため対象外と文書化
 - Smudge/Blur/Liquify: strength・硬さ・間隔まで対応。マスク上操作なし
-- タブ: 切替・新規のみ。プロジェクト保存なし
+- タブ: 切替・新規・•未保存ドット・文書表題改名・計画書保存開封まで対応。折畳み・ドラッグ並替・タブ間層複写なし
+- 取込: PNG/JPG/BMP/WebP復号まで対応。HEIC/TIFFは復号器なしのため探知＋「未対応形式」明示（要PNG/JPEG変換）
+- JPEG出力: 画質・マット・encoded preview・進捗まで対応。解像度DPIメタ未書込・画質の次回起動への引継ぎなし
 
 ## 未移植（×・UIで「未対応」明示済み：無効ボタン＋ツールチップ）
 - SubjectRemoval（Vision）/ GuidedMatte（マット精緻化・対象外として維持）
 - 調整シートUI（Curves/Levels/HueSaturation/Filterのダイアログ・エンジンは移植済み）
-- MaskTracing・プロジェクト保存/シート
+- MaskTracing
 
 ## 未移植（×・実用レベル後の次フェーズ・すべてUIで「未対応」明示済み）
 - 詳細は TOOLS_PARITY.md の×7件を参照（SubjectRemoval/GuidedMatte/調整シートUI等はいずれも無効ボタン＋ツールチップ）。
 - Merge Downはフォルダ内・クリップ込・覆面焼込・trim対応へ拡張済み（旧v1制限のクリップ注記は解消）。複数選択UIは次フェーズ（プランはエンジンのみ）。
 - 覆面の歪み焼込・Option-drag複写・サムネイル、フォルダ折畳みUI・ドラッグ並替は次フェーズ。
 
-## 実用レベル6項目の自己評価（t_fab05a0a更新）
-1. 機能網羅: TOOLS_PARITY.mdで42件を○15/△20/×7に整理。×は全て未対応バッジ明示（SubjectRemovalは対象外維持）
-2. 安定性: クラッシュ修正済み（t_3b5fced0）・単体140件合格（層系新規31件含む）・1000回ストレス合格（既存）。100時間相当の長時間実機は安定化カードの範囲
+## 実用レベル6項目の自己評価（t_e1a8b05e更新）
+1. 機能網羅: TOOLS_PARITY.mdで42件を○15/△20/×7に整理（集計不変・行内容を更新）。×は全て未対応バッジ明示（SubjectRemovalは対象外維持）。文書・入出力・色UIは別枠8行で△整理（計画書保存開封・JPEG・結合コピー・FG/BG調色板・タブ標識が本カードの追加分）
+2. 安定性: クラッシュ修正済み（t_3b5fced0）・単体158件合格（文書系新規18件含む）・1000回ストレス合格（既存）。100時間相当の長時間実機は安定化カードの範囲
 3. 性能: 4K合成94ms（既存値・本カードで回帰なし）。起動3秒は要実機計測（安定化カード）
 4. UX: Photoshop準拠ショートカット（SHORTCUTS.md）・タブ/レイヤーパネル仕上げ（複製/Merge/Lock/リネーム）・Undo/Redo往復テスト合格
 5. 配布品質: zip配布可・README/LICENSE/GAP/PARITY/SHORTCUTS整備。MSIX/署名/チュートリアル/スクリーンショットは次フェーズ
