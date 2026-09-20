@@ -202,7 +202,7 @@ public partial class MainWindow : Window
                 fb.Address, fb.RowBytes);
             var canvas = surface.Canvas;
             DrawCheckerboard(canvas, w, h);
-            doc.Draw(canvas, zoom);
+            doc.Draw(canvas, zoom, new SKRect(0, 0, doc.Width, doc.Height));
             if (doc.Selection is SKRect selRect)
             {
                 using var selPaint = new SKPaint
@@ -235,15 +235,31 @@ public partial class MainWindow : Window
         if (sw.ElapsedMilliseconds > 100) Log($"RenderCanvas {w}x{h} took {sw.ElapsedMilliseconds}ms");
     }
 
+    static SKBitmap checkerTile;   // 32x32 pattern (2x2 cells of 16px), built once, tiled via shader
+    static SKBitmap CheckerTile()
+    {
+        if (checkerTile != null) return checkerTile;
+        var tile = new SKBitmap(32, 32, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(tile))
+        {
+            canvas.Clear(new SKColor(230, 230, 230));
+            using var dark = new SKPaint { Color = new SKColor(200, 200, 204) };
+            canvas.DrawRect(16, 0, 16, 16, dark);
+            canvas.DrawRect(0, 16, 16, 16, dark);
+        }
+        checkerTile = tile;
+        return tile;
+    }
+
     static void DrawCheckerboard(SKCanvas canvas, int w, int h)
     {
-        const int c = 16;
-        using var light = new SKPaint { Color = new SKColor(230, 230, 230) };
-        using var dark = new SKPaint { Color = new SKColor(200, 200, 204) };
-        for (int y = 0; y < h; y += c)
-            for (int x = 0; x < w; x += c)
-                canvas.DrawRect(x, y, Math.Min(c, w - x), Math.Min(c, h - y),
-                    ((x / c + y / c) % 2 == 0) ? light : dark);
+        // 旧来の16pxセル毎DrawRectは4Kで約3.2万回発行しフレームを支配していた。
+        // 32x32パターンをRepeatシェーダで一括充填する（1 draw call、メモリ+4KBのみ）。
+        using var paint = new SKPaint
+        {
+            Shader = SKShader.CreateBitmap(CheckerTile(), SKShaderTileMode.Repeat, SKShaderTileMode.Repeat),
+        };
+        canvas.DrawRect(0, 0, w, h, paint);
     }
 
     // ---------- tools / zoom ----------

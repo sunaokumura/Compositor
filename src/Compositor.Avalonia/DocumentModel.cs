@@ -137,10 +137,23 @@ public class Document
         return bmp;
     }
 
-    public void Draw(SKCanvas canvas, float zoom)
+    public void Draw(SKCanvas canvas, float zoom, SKRect? viewportDocRect = null)
     {
         foreach (var layer in Layers)
+        {
+            if (viewportDocRect is SKRect vp && IsOutsideViewport(layer, vp))
+                continue;
             DrawLayer(canvas, layer, zoom);
+        }
+    }
+
+    static bool IsOutsideViewport(Layer layer, SKRect vp)
+    {
+        if (layer is not { Visible: true, Bitmap: not null } || layer.Opacity <= 0f) return true;
+        if (layer.Rotation != 0 || layer.FlipH || layer.FlipV) return false; // transformed: conservative, no cull
+        float l = layer.Position.X, t = layer.Position.Y;
+        float r = l + layer.Bitmap.Width * layer.Scale, b = t + layer.Bitmap.Height * layer.Scale;
+        return r <= vp.Left || l >= vp.Right || b <= vp.Top || t >= vp.Bottom;
     }
 
     /// <summary>Copy-on-write: clone pixels before any destructive paint so Undo snapshots keep pre-paint pixels.</summary>
