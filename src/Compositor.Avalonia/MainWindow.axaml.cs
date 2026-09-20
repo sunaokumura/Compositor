@@ -80,6 +80,8 @@ public partial class MainWindow : Window
     bool floatingFrameDrag;           // true=枠のみ移動中
     SKPoint frameDragLast;            // 枠移動の前回doc位置
     SKPoint lastCopyOrigin = new(0, 0);   // 選択コピーの貼付位置
+    bool handPanning;                 // Hand工具の画面移動中 (層・選択・Undoに不干渉・t_04a6dbab)
+    Point handPanLast;                // pan前回位置 (view px)
 
     static readonly List<(string Name, SKColor Color)> BrushColors = new()
     {
@@ -1946,12 +1948,36 @@ public partial class MainWindow : Window
             e.Pointer.Capture((IInputElement)s);
             return;
         }
-        // Move: 選択内掴みは枠移動、Ctrl+掴みは画素切出移動、Alt+掴みは複写移動 (Mac PixelMove相当)
-        if (currentTool == Tool.Move && doc.Selection != null && doc.InsideSelection(docPoint))
+        // Move/Hand押下の振分け (MovePress.Classify・単体試験MovePressTestsで保証)。
+        // 枠外押の仕様: 選択は保持したまま最前面の層を掴む (Mac/Photoshop準拠・SHORTCUTS.mdに文書化)。
+        // Handはpan専用で層・選択・Undoに触れない (MacのHandは層を移動しない)。
+        // 枠のみ移動と画素切出/複写の既定動作は維持。
+        if (currentTool == Tool.Move || currentTool == Tool.Hand)
         {
-            if (mods.HasFlag(KeyModifiers.Control) || mods.HasFlag(KeyModifiers.Meta) || mods.HasFlag(KeyModifiers.Alt))
+            bool hasSel = doc.Selection != null;
+            bool inside = hasSel && doc.InsideSelection(docPoint);
+            bool cutKeys = mods.HasFlag(KeyModifiers.Control) || mods.HasFlag(KeyModifiers.Meta) || mods.HasFlag(KeyModifiers.Alt);
+            var pressKind = MovePress.Classify(currentTool == Tool.Move, currentTool == Tool.Hand,
+                hasSel, inside, cutKeys, mods.HasFlag(KeyModifiers.Alt));
+            if (pressKind == MovePressKind.Pan)
             {
-                bool duplicate = mods.HasFlag(KeyModifiers.Alt);
+                handPanning = true;
+                handPanLast = e.GetPosition((Visual)s);
+                Log("Hand pan start");
+                e.Pointer.Capture((IInputElement)s);
+                return;
+            }
+            if (pressKind == MovePressKind.FrameDrag)
+            {
+                floatingFrameDrag = true;
+                frameDragLast = docPoint;
+                Log("Selection frame drag start");
+                e.Pointer.Capture((IInputElement)s);
+                return;
+            }
+            if (pressKind == MovePressKind.PixelMove || pressKind == MovePressKind.PixelDuplicate)
+            {
+                bool duplicate = pressKind == MovePressKind.PixelDuplicate;
                 for (int i = doc.Layers.Count - 1; i >= 0; i--)
                 {
                     var l = doc.Layers[i];
@@ -1966,17 +1992,12 @@ public partial class MainWindow : Window
                     RenderCanvas();
                     break;
                 }
+                e.Pointer.Capture((IInputElement)s);
+                return;
             }
-            else
-            {
-                floatingFrameDrag = true;
-                frameDragLast = docPoint;
-                Log("Selection frame drag start");
-            }
-            e.Pointer.Capture((IInputElement)s);
-            return;
+            // LayerDrag (枠外・選択なし) は下の層掴み枝へ。選択は保持する。
         }
-        // Move / Hand: topmost hit layer drag (Handはスクロール任せのためMoveと同等)
+        // Move: topmost hit layer drag (Handは上記でpanに分岐しここへ来ない)
         for (int i = doc.Layers.Count - 1; i >= 0; i--)
         {
             var l = doc.Layers[i];
@@ -2040,6 +2061,19 @@ public partial class MainWindow : Window
             var propsG = e.GetCurrentPoint((Control)s).Properties;
             if (!propsG.IsLeftButtonPressed) return;
             MoveGradient(docPoint, e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            return;
+        }
+        if (handPanning)
+        {
+            // Handは画面移動のみ (層・選択・Undoに不干渉・t_04a6dbab)
+            var propsH = e.GetCurrentPoint((Control)s).Properties;
+            if (!propsH.IsLeftButtonPressed) { handPanning = false; return; }
+            var hnow = e.GetPosition((Visual)s);
+            if (CanvasScroll != null)
+                CanvasScroll.Offset = new Vector(
+                    CanvasScroll.Offset.X - (hnow.X - handPanLast.X),
+                    CanvasScroll.Offset.Y - (hnow.Y - handPanLast.Y));
+            handPanLast = hnow;
             return;
         }
         // ブラシ環ホバー追従 (ボタン押下なし・描画系工具のみ)
@@ -2273,6 +2307,7 @@ public partial class MainWindow : Window
             RenderCanvas();
         }
         floatingFrameDrag = false;
+        handPanning = false;
         EndPaintStroke();
         e.Pointer.Capture(null);
     }

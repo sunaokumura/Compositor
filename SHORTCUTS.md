@@ -19,8 +19,8 @@
 | T | Distort（自由変形・歪み） | 角掴み歪み・Shift軸固定・Enter確定・Esc取消 |
 | U | Shape（矩形/角丸/楕円） | Drag描画・Shift正方形・Alt中心・新規層作成・形状種はShape種ボタンで循環 |
 | G | Gradient | Drag引張描画・Shift=45°・Enter確定・Esc取消・同一層再ドラッグで端点調整 |
-| V | Move | 選択内Drag=枠移動・Ctrl+Drag=画素移動・Alt+Drag=複写 |
-| H | Hand | （スクロール任せ・Move同等） |
+| V | Move | 選択内Drag=枠移動・Ctrl+Drag=画素移動・Alt+Drag=複写・枠外押=選択保持のまま最前面層掴み |
+| H | Hand | Dragで画面移動のみ（層・選択・Undoに不干渉） |
 | [ / ] | ブラシサイズ -4 / +4 | 工具頭欄にØ表示 |
 | Shift+[ / Shift+] | 硬さ -25% / +25% | 工具頭欄にH表示・内破線環で可視化 |
 | 1 … 9 / 0 | 不透明度 10% … 90% / 100% | 描画系工具のみ（Smudge系はStrength） |

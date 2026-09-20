@@ -586,6 +586,11 @@ public static class SelectionTools
         return new SKRect(x0, y0, x1, y1);
     }
 
+    /// <summary>矩形の枠内判定 (inclusive)。SKRect.Contains は右/下端を除外する半開区間のため、
+    /// 選択枠の右端・下端の押下が枠外扱いになり層掴み枝へ落ちる (t_04a6dbab)。枠表示と一致させる。</summary>
+    public static bool RectContainsInclusive(SKRect r, SKPoint p) =>
+        p.X >= r.Left && p.X <= r.Right && p.Y >= r.Top && p.Y <= r.Bottom;
+
     public static bool Contains(Document doc, SKPoint p)
     {
         var r = doc.Selection.Value;
@@ -596,7 +601,7 @@ public static class SelectionTools
             case SelectionKind.Polygon:
                 if (doc.SelectionPolygon != null && doc.SelectionPolygon.Count >= 3)
                     return PointInPolygon(doc.SelectionPolygon, p);
-                return r.Contains(p.X, p.Y);
+                return RectContainsInclusive(r, p);
             case SelectionKind.Wand:
                 if (doc.SelectionMask != null && doc.SelectionMaskW == doc.Width && doc.SelectionMaskH == doc.Height)
                 {
@@ -604,8 +609,8 @@ public static class SelectionTools
                     if (x < 0 || y < 0 || x >= doc.Width || y >= doc.Height) return false;
                     return doc.SelectionMask[y * doc.Width + x] != 0;
                 }
-                return r.Contains(p.X, p.Y);
-            default: return r.Contains(p.X, p.Y);
+                return RectContainsInclusive(r, p);
+            default: return RectContainsInclusive(r, p);
         }
     }
 
