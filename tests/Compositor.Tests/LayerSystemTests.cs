@@ -321,6 +321,54 @@ public class LayerSystemTests
         Assert.False(GradientOps.Commit(l, draft, SKColors.Black, SKColors.White));
     }
 
+    [Fact]
+    public void Gradient_FgToTransparent_AppDefault_PaintsStartKeepsEnd()
+    {
+        // アプリ既定 (BeginGradient): Linear + ForegroundToTransparent。FG=黒を白層へ引張。
+        var l = SolidLayer("a", 16, 16, SKColors.White);
+        var draft = new GradientDraft { Start = new SKPoint(0, 8), End = new SKPoint(16, 8),
+            Shape = GradientShape.Linear, Style = GradientStyle.ForegroundToTransparent };
+        Assert.True(draft.HasLine);
+        Assert.True(GradientOps.Commit(l, draft, SKColors.Black, SKColors.White));
+        var near = l.Bitmap.GetPixel(0, 8);
+        Assert.True(near.Alpha > 200 && near.Red < 40, $"start should be ~opaque black, got {near}");
+        var far = l.Bitmap.GetPixel(15, 8);
+        Assert.True(far.Red > 200, $"far end should stay white, got {far}");
+    }
+
+    [Fact]
+    public void UndoStack_DiscardLast_DropsTopWithoutRestoreOrRedo()
+    {
+        // Gradient click-cancel用: press時Pushを復元なし・redo汚染なしで消す。
+        var doc = Doc(8, 8);
+        var st = new UndoStack();
+        st.Push(doc);
+        Assert.True(st.CanUndo);
+        st.DiscardLast();
+        Assert.False(st.CanUndo);
+        Assert.False(st.CanRedo);
+    }
+
+    [Fact]
+    public void UndoStack_DiscardLast_Empty_NoThrow()
+    {
+        var st = new UndoStack();
+        st.DiscardLast();
+        Assert.False(st.CanUndo);
+    }
+
+    [Fact]
+    public void UndoStack_UndoDepth_TracksPushes()
+    {
+        var doc = Doc(8, 8);
+        var st = new UndoStack();
+        Assert.Equal(0, st.UndoDepth);
+        st.Push(doc);
+        Assert.Equal(1, st.UndoDepth);
+        st.DiscardLast();
+        Assert.Equal(0, st.UndoDepth);
+    }
+
     // ---------- content fill ----------
 
     [Fact]

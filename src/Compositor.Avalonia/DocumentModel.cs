@@ -152,6 +152,8 @@ public class UndoStack
 
     public bool CanUndo => undo.Count > 0;
     public bool CanRedo => redo.Count > 0;
+    /// <summary>Depth of the undo stack (for draft owners to tell whether their entry is still on top).</summary>
+    public int UndoDepth => undo.Count;
 
     public LayerSnapshot Undo(Document doc)
     {
@@ -169,6 +171,16 @@ public class UndoStack
         var s = redo[^1]; redo.RemoveAt(redo.Count - 1);
         undo.Add(LayerSnapshot.Capture(doc));
         s.Restore(doc);
+        Changed?.Invoke();
+    }
+
+    /// <summary>Drop the newest undo entry WITHOUT restoring it and WITHOUT touching redo.
+    /// For cancelling a non-destructive draft whose press-time Push must vanish (click-without-drag).
+    /// Only the owner that pushed it may call this, and only while its entry is still on top.</summary>
+    public void DiscardLast()
+    {
+        if (!CanUndo) return;
+        undo.RemoveAt(undo.Count - 1);
         Changed?.Invoke();
     }
 }

@@ -67,6 +67,7 @@ public partial class MainWindow : Window
     GradientDraft gradientDraft;        // pending (Enter確定・Esc取消)
     Layer gradientLayer;                // draft対象層
     bool gradientDragging;
+    int gradientUndoDepth = -1;         // press時Push前のUndo深さ (取消時は自分の頂上のみ破棄)
     SKColor gradientBg = SKColors.White;
     List<SKPoint> lassoDraft;         // freehand draft (document px, Enter/ダブルクリック確定)
     List<SKPoint> polygonDraft;       // polygonal vertices (document px)
@@ -142,6 +143,9 @@ public partial class MainWindow : Window
         ContrastSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         SaturSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
         BlurSlider.AddHandler(PointerReleasedEvent, (s, e) => sliderArmed = false, RoutingStrategies.Direct);
+        // Gradient保留中のEnterは工具欄Buttonに横取りされてWindowまで届かない実機不具合の対策:
+        // Tunnel段階(フォーカス先より先)で確定を受け付ける。TextBox編集中はそちらを優先する。
+        AddHandler(KeyDownEvent, OnGradientConfirmTunnel, RoutingStrategies.Tunnel);
         undoStack.Changed += UpdateUndoButtons;
 
         doc.Changed += RefreshAll;
@@ -789,24 +793,27 @@ public partial class MainWindow : Window
             Math.Clamp(lp.Y, 0, Math.Max(0, l.Bitmap.Height - 1)));
     }
 
-    void BeginGradient(SKPoint docPoint)
+    /// <summary>Gradient drag開始。成功時のみtrue (失敗時はdraftを作らずdragも開始しない).</summary>
+    bool BeginGradient(SKPoint docPoint)
     {
-        if (Selected is not { } l || l.Bitmap == null || l.IsGroup || l.Locked) return;
+        if (Selected is not { } l || l.Bitmap == null || l.IsGroup || l.Locked) return false;
         // 同一対象への再ドラッグは端点を置き換え (Mac beginGradient相当)
         if (gradientDraft != null && gradientLayer == l)
         {
             gradientDraft.Start = ToLayerPixelClamped(l, docPoint);
             gradientDraft.End = gradientDraft.Start;
             RenderCanvas();
-            return;
+            return true;
         }
         CommitGradient();   // 別層の保留は先に適用
+        gradientUndoDepth = undoStack.UndoDepth;
         undoStack.Push(doc);   // 確定は同一Undoに (draft自体は非破壊)
         gradientDraft = new GradientDraft { Start = ToLayerPixelClamped(l, docPoint) };
         gradientDraft.End = gradientDraft.Start;
         gradientDraft.Shape = GradientShape.Linear;
         gradientDraft.Style = GradientStyle.ForegroundToTransparent;
         gradientLayer = l;
+        return true;
     }
 
     void MoveGradient(SKPoint docPoint, bool snap45)
@@ -827,16 +834,32 @@ public partial class MainWindow : Window
             Log($"Gradient commit on '{gradientLayer.Name}'");
         }
         gradientDraft = null; gradientLayer = null;
+        gradientUndoDepth = -1;
         RefreshAll();
     }
 
     void CancelGradient()
     {
         gradientDraft = null; gradientLayer = null;
-        // Press時にpushしたUndoエントリを取り消し (draftは非破壊のため)
-        if (undoStack.CanUndo) undoStack.Undo(doc);
+        // Press時にpushしたUndoエントリを取り消す (draftは非破壊のため)。ただし自分の頂上の
+        // 場合のみ破棄し、後に別操作が積まれていたらそちらを壊さず自分のエントリは履歴として残す。
+        if (gradientUndoDepth >= 0 && undoStack.UndoDepth == gradientUndoDepth + 1)
+            undoStack.DiscardLast();
+        gradientUndoDepth = -1;
         Log("Gradient cancel");
         RefreshAll();
+    }
+
+    /// <summary>Gradient保留中のEnter確定をTunnel段階で受ける (実機対策)。
+    /// 工具欄ButtonにフォーカスがあるとEnterはButtonのClickとして消費され、Windowの
+    /// OnKeyDown (Bubble) まで届かず確定できない (=「引張っても描画なし」に見える)。
+    /// Tunnelはフォーカス先より先にWindowへ届くため、ここで確定して横取りを防ぐ。</summary>
+    void OnGradientConfirmTunnel(object s, KeyEventArgs e)
+    {
+        if (gradientDraft == null || e.Key != Key.Enter) return;
+        if (FocusManager?.GetFocusedElement() is TextBox) return;   // 文書名・数値編集中はそちらを優先
+        CommitGradient();
+        e.Handled = true;
     }
 
     /// <summary>Shift=加算・Option/Alt=減算、なければ工具栏Mode (Mac selectionMode相当).</summary>
@@ -1718,8 +1741,7 @@ public partial class MainWindow : Window
         }
         if (currentTool == Tool.Gradient)
         {
-            BeginGradient(docPoint);
-            gradientDragging = true;
+            gradientDragging = BeginGradient(docPoint);
             RenderCanvas();
             RefreshToolHeader();
             e.Pointer.Capture((IInputElement)s);
