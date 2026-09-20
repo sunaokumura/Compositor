@@ -27,3 +27,9 @@
 - コード署名: 有効な証明書なしのため未実施。自己署名は配布署名として不適のため見送り。
 - MSIXパッケージ化: 署名が前提のため `packaging/Package.appxmanifest` 草案まで。
 - アプリ内 About でのLICENSE表示: 未実装 (機能タスク側の残課題として申告)。
+
+## P0検証追記 (t_7d185144・2026-09-21・WSL headless)
+- dotnet build Release: 0 errors (CS0618旧ダイアログ警告のみ・既存＋新規ASE対話分。Apps反映は利用者許可なく禁止のため未実施)。
+- dotnet test Release: 全合格 (P0WorldBestTests 21件含む。内 headless E2E 1件: PNG書出→ImageImport.DecodeFile→Curves破壊→Hue調整層→gap wand選択→Solo→JPEG Export/CopyMerged PNGの復号確認)。
+- XAML: Avalonia compile通過 (Release build時)＋x:Name計99件 (既存87件不変＋新規12件)・操作子名は追加のみで既存不変。
+- 実機GUI目視 (Import→編集→Exportの手操作) はWSL headless制約のため未実施。後続実機工程で `Curves.../Levels.../Hue.../Filter...` 対話・Solo・View°・ASE/Harmony/Profile・`/`検索の目視確認を引き継ぐ。

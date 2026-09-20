@@ -195,6 +195,8 @@ public class Document
     public string ProjectPath;          // .comp package directory path; null = unsaved
     public Guid? ActiveLayerId;         // active layer (Mac activeLayerID; round-trips in manifest)
     public bool IsModified;             // set by UndoStack.Push; cleared by save/load (Mac history.isModified)
+    public Guid? SoloLayerId;           // P0 Solo 表示: 非null時は対象層のみ表示 (view 状態・Undo/保存対象外)
+    public float CanvasAngle;           // P0 canvas 回転: 表示のみの回転角 (-180,180]・画素不変)
     /// <summary>Mark the document saved (Mac history.markSaved subset).</summary>
     public void MarkSaved() => IsModified = false;
     /// <summary>Geometry limit shared with NewCanvas (Mac CanvasDocument.validDimension).</summary>

@@ -280,7 +280,7 @@
       <Border Grid.Column="1" Background="#1E1E1E" Padding="12">
         <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="6" Padding="0">
         <ScrollViewer x:Name="CanvasScroll" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-          <Image x:Name="CanvasImage" Stretch="None"
+          <Image x:Name="CanvasImage" Stretch="None" RenderTransformOrigin="50%,50%"
                  PointerPressed="OnCanvasPointerPressed"
                  PointerMoved="OnCanvasPointerMoved"
                  PointerReleased="OnCanvasPointerReleased"/>
@@ -295,7 +295,7 @@
               <TextBlock Text="Layers" FontWeight="SemiBold" FontSize="12" Foreground="#CCCCCC" VerticalAlignment="Center"/>
               <TextBlock x:Name="LayerCountLabel" Foreground="#9D9D9D" FontSize="11" VerticalAlignment="Center" Text="0"/>
             </StackPanel>
-            <ListBox x:Name="LayerList" Height="220" SelectionChanged="OnLayerSelected" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="5"/>
+            <ListBox x:Name="LayerList" Height="220" SelectionMode="Multiple" SelectionChanged="OnLayerSelected" Background="#1E1E1E" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="5" ToolTip.Tip="複数選択可 (Ctrl/Shift+click)・Solo/結合対象"/>
             <WrapPanel Orientation="Horizontal">
               <Button Classes="chip" Click="OnAddLayer" ToolTip.Tip="新規空白層">
                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
@@ -341,6 +341,13 @@
               </Button>
               <CheckBox x:Name="VisibleCheck" Content="Visible" IsChecked="True" Checked="OnVisibleChanged" Unchecked="OnVisibleChanged" ToolTip.Tip="層の表示/非表示 (目玉相当)"/>
               <CheckBox x:Name="LockCheck" Content="Lock" Checked="OnLockChanged" Unchecked="OnLockChanged" ToolTip.Tip="移動・描画を禁止 (錠相当)"/>
+              <CheckBox x:Name="SoloCheck" Content="Solo" Checked="OnSoloChanged" Unchecked="OnSoloChanged" ToolTip.Tip="選択層のみ表示 (ibisPaint Solo相当・表示のみ)"/>
+              <Button Classes="chip" Click="OnMergeSelected" ToolTip.Tip="複数選択層を結合 (2層以上選択)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M7 1h2v8h3L8 13 4 9h3V1z M2 13h12v2H2v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="MergeSel" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
             </WrapPanel>
             <TextBlock Text="Mask" Classes="section"/>
             <WrapPanel Orientation="Horizontal">
@@ -554,6 +561,17 @@
                 </StackPanel>
               </Button>
             </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="View°" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="canvas 回転 (表示のみ・画素不変・GIMP作画検証相当)"/>
+              <Slider x:Name="CanvasAngleSlider" Minimum="-180" Maximum="180" Width="112" ValueChanged="OnCanvasAngleChanged"/>
+              <TextBlock x:Name="CanvasAngleLabel" VerticalAlignment="Center" Text="0°" Foreground="#E8E8E8"/>
+              <Button Classes="chip" Click="OnCanvasAngleReset" ToolTip.Tip="回転を0°に戻す">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M13 8A5 5 0 103 8h2a3 3 0 116 0h-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Reset" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </StackPanel>
             <TextBlock Text="Crop" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Ratio" VerticalAlignment="Center" Width="56" Classes="dim"/>
@@ -626,6 +644,36 @@
                 </StackPanel>
               </Button>
             </WrapPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="/" VerticalAlignment="Center" Width="14" Foreground="#9D9D9D" ToolTip.Tip="GIMP `/` 相当: 調整・フィルタ検索"/>
+              <TextBox x:Name="FilterSearchBox" Width="150" Watermark="/ filter 検索" TextChanged="OnFilterSearch" ToolTip.Tip="入力で下の調整ボタンを絞り込む (空=全表示)"/>
+            </StackPanel>
+            <WrapPanel Orientation="Horizontal" x:Name="AdjustButtonsPanel">
+              <Button Classes="chip" x:Name="CurvesDlgBtn" Tag="curves" Click="OnCurvesDialog" ToolTip.Tip="カーブ調整シート (engine済・破壊/調整層)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 13C5 13 5 8 8 8s3-5 6-5M2 13h12" Width="12" Height="12"/>
+                  <TextBlock Text="Curves..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="LevelsDlgBtn" Tag="levels" Click="OnLevelsDialog" ToolTip.Tip="レベル調整シート (engine済・破壊/調整層)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 13V8 M6 13V5 M10 13V3 M14 13V6 M1 13h14" Width="12" Height="12"/>
+                  <TextBlock Text="Levels..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="HueDlgBtn" Tag="hue" Click="OnHueDialog" ToolTip.Tip="色相・彩度シート (engine済・破壊/調整層)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4a4 4 0 100 8 4 4 0 000-8z" Width="12" Height="12"/>
+                  <TextBlock Text="Hue..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <Button Classes="chip" x:Name="FilterDlgBtn" Tag="grain" Click="OnFilterDialog" ToolTip.Tip="フィルタシート (Grain/Noise/Lens/Blur・engine済)">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M4 4h2v2H4V4z M8 3h3v3H8V3z M3 9h3v3H3V9z M9 9h4v4H9V9z M5 13h3v2H5v-2z" Width="12" Height="12"/>
+                  <TextBlock Text="Filter..." VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+            </WrapPanel>
             <TextBlock Text="Brush" Classes="section"/>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Size" VerticalAlignment="Center" Width="56" Classes="dim"/>
@@ -673,6 +721,32 @@
                 </Button>
               </StackPanel>
             </StackPanel>
+            <WrapPanel Orientation="Horizontal">
+              <Button Classes="chip" Click="OnAseLoad" ToolTip.Tip="Adobe ASE swatch を読込んで調色板へ追加">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M2 2h12v12H2V2z M2 6h12 M2 10h12" Width="12" Height="12"/>
+                  <TextBlock Text="ASE" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <ComboBox x:Name="HarmonyBox" Width="130" SelectedIndex="0" ToolTip.Tip="和声盤 (Procreate Harmony相当・前景色起点)">
+                <ComboBoxItem>Complementary</ComboBoxItem>
+                <ComboBoxItem>Analogous</ComboBoxItem>
+                <ComboBoxItem>Triadic</ComboBoxItem>
+                <ComboBoxItem>Split-Compl.</ComboBoxItem>
+                <ComboBoxItem>Square</ComboBoxItem>
+              </ComboBox>
+              <Button Classes="chip" Click="OnHarmonyApply" ToolTip.Tip="前景色から和声色列を調色板へ追加">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                  <PathIcon Data="M8 1a7 7 0 100 14A7 7 0 008 1z M8 4a4 4 0 100 8 4 4 0 000-8z" Width="12" Height="12"/>
+                  <TextBlock Text="Harmony" VerticalAlignment="Center"/>
+                </StackPanel>
+              </Button>
+              <ComboBox x:Name="ProfileBox" Width="130" SelectedIndex="0" SelectionChanged="OnProfileChanged" ToolTip.Tip="出力 profile preview (表示のみ・画素不変)">
+                <ComboBoxItem>sRGB</ComboBoxItem>
+                <ComboBoxItem>Display-P3 模擬</ComboBoxItem>
+                <ComboBoxItem>Grayscale 模擬</ComboBoxItem>
+              </ComboBox>
+            </WrapPanel>
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="Hard" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="硬さ 0-100% (Shift+[ ]でも調整)"/>
               <Slider x:Name="HardnessSlider" Minimum="0" Maximum="100" Width="112" Value="100" ValueChanged="OnHardnessChanged"/>
@@ -723,6 +797,10 @@
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Text="W.Tol" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="Wand許容差 0-255"/>
               <Slider x:Name="WandToleranceSlider" Minimum="0" Maximum="255" Width="112" Value="32"/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <TextBlock Text="Gap" VerticalAlignment="Center" Width="56" Classes="dim" ToolTip.Tip="gap-closing 0-8px (Krita隙間閉鎖塗り相当・0=従来)"/>
+              <Slider x:Name="GapCloseSlider" Minimum="0" Maximum="8" Width="112" Value="2"/>
             </StackPanel>
             <WrapPanel Orientation="Horizontal">
               <CheckBox x:Name="WandContiguousCheck" Content="Contiguous" IsChecked="True" ToolTip.Tip="隣接のみ選択 (OFF=全体から類似色)"/>

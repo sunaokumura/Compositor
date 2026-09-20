@@ -78,6 +78,7 @@ public static class LayerHierarchy
 
     public static bool IsEffectivelyVisible(Document doc, Layer layer)
     {
+        if (doc != null && doc.SoloLayerId is Guid solo && layer.Id != solo) return false;   // P0 Solo
         var byId = doc.Layers.ToDictionary(l => l.Id);
         var cur = layer;
         int depth = 0;

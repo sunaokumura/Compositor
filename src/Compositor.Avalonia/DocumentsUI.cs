@@ -237,7 +237,7 @@ public partial class MainWindow
                 int keep = PaletteBox.SelectedIndex;
                 PaletteBox.Items.Clear();
                 foreach (var sw in palette.Swatches)
-                    PaletteBox.Items.Add($"#{sw.Hex}");
+                    PaletteBox.Items.Add($"#{ProfilePreviewOps.Preview(sw, previewProfile).Hex}");   // P0 profile preview (表示のみ)
                 if (PaletteBox.ItemCount > 0)
                 {
                     int want = Math.Clamp(keep, 0, PaletteBox.ItemCount - 1);

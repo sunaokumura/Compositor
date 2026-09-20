@@ -37,9 +37,9 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 - フォルダ/グループ: 作成・群化・解除・階層描画・実効可視性・Up/Down移動・中身ごと削除・Merge Groupまで対応。折畳みUI・ドラッグ並替なし
 - ContentFill: 周囲平均の反復補填（決定性・小穴用）＋拡張貼付（層拡大）まで対応。Mac content_fillカーネル非搭載のため近似と文書化
 - 選択: 矩形/楕円Marquee・自由/多角Lasso・MagicWand・画素移動・結合コピーまで対応。Expand/Contract・パス演算・アンチエイリアスなし
-- 変形: 移動・拡縮（均一スライダー＋非均一数値）・回転・反転・歪み・数値指定・Sampling・Flip Canvas・Canvas/Image Size・Cropまで対応。複数層グループ・スナップなし
+- 変形: 移動・拡縮（均一スライダー＋非均一数値）・回転・反転・歪み・数値指定・Sampling・Flip Canvas・Canvas/Image Size・Cropまで対応。複数層グループ・スナップなし。P0追加: canvas回転view（View°・表示のみ画素不変）・Solo表示（対象層のみ・IsEffectivelyVisible連動）・複数選択UI（LayerList複数選択＋MergeSel＋Group複数対応）
 - Distort: 角掴み・Shift軸固定・確定/取消・Flip考慮warpまで対応。live画素previewは枠表示のみ・マスク連動なし
-- 調整: Bright/Contrast/Saturation/Blur/Invertに加えCurves/Levels/GradientMap/Exposure/Hue全域/Grain/Noise/Lens/Blur外広がりのエンジン＋調整層方式まで対応（画素値試験32件）。Curves/Levels/GradientMapのシートUIは次段階（無効ボタン残置）
+- 調整: Bright/Contrast/Saturation/Blur/Invertに加えCurves/Levels/GradientMap/Exposure/Hue全域/Grain/Noise/Lens/Blur外広がりのエンジン＋調整層方式まで対応（画素値試験32件）。P0追加: Curves.../Levels.../Hue.../Filter...対話（破壊/調整層選択）・`/`filter検索・Wand gap-closing（Gap滑子0-8・既定2）・ASE読込・Harmony盤5種・profile preview表示。残件: GradientMap単独・露出単独シート
 - ブラシ: 柔らか円ダブ・硬さ・間隔・不透明度（1-0キー）・6色＋Picked枠まで対応。GPUタイル・曲線補間・Shift-クリック直線なし
 - Clone: Alt-click採取・aligned・All Layers・stroke Undoまで対応。回転層の採取写像・採取プレビュー画像なし
 - Heal: 内容認識近似（環平均＋縁フェザー・Create Textureは粒状付加・Proximityは狭環）。完全再現（パッチ探索＋膜充填）は重量級のため対象外と文書化
@@ -50,12 +50,12 @@ Mac版 Document/*.swift（41ファイル）に対する移植状態。○＝移�
 
 ## 未移植（×・UIで「未対応」明示済み：無効ボタン＋ツールチップ）
 - SubjectRemoval（Vision）/ GuidedMatte（マット精緻化・対象外として維持）
-- 調整シートUI（Curves/Levels/HueSaturation/Filterのダイアログ・エンジンは移植済み）
+- 調整シートUI残件（GradientMap単独・露出単独のダイアログ。Curves/Levels/Hue/FilterはP0で対話UI化済み・旧無効ボタンは意匠回帰互換のため残置）
 - MaskTracing
 
 ## 未移植（×・実用レベル後の次フェーズ・すべてUIで「未対応」明示済み）
-- 詳細は TOOLS_PARITY.md の×7件を参照（SubjectRemoval/GuidedMatte/調整シートUI等はいずれも無効ボタン＋ツールチップ）。
-- Merge Downはフォルダ内・クリップ込・覆面焼込・trim対応へ拡張済み（旧v1制限のクリップ注記は解消）。複数選択UIは次フェーズ（プランはエンジンのみ）。
+- 詳細は TOOLS_PARITY.md の×7件を参照（SubjectRemoval/GuidedMatte/調整シートUI残件はいずれも無効ボタン＋ツールチップ。P0でCurves.../Levels.../Hue.../Filter...対話を追加済み）。
+- Merge Downはフォルダ内・クリップ込・覆面焼込・trim対応へ拡張済み（旧v1制限のクリップ注記は解消）。複数選択UIはP0で完成（LayerList複数選択＋MergeSel＋Group複数対応・ドラッグ並替は残件）。
 - 覆面の歪み焼込・Option-drag複写・サムネイル、フォルダ折畳みUI・ドラッグ並替は次フェーズ。
 
 ## 実用レベル6項目の自己評価（t_e1a8b05e更新）

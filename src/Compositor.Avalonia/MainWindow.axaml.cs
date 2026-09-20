@@ -189,6 +189,9 @@ public partial class MainWindow : Window
                 ScaleSlider.Value = Math.Clamp(sel.ScaleX * 100, ScaleSlider.Minimum, ScaleSlider.Maximum);
                 VisibleCheck.IsChecked = sel.Visible;
                 LockCheck.IsChecked = sel.Locked;
+                if (SoloCheck != null) SoloCheck.IsChecked = doc.SoloLayerId == sel.Id;   // P0 Solo
+                if (CanvasAngleSlider != null) CanvasAngleSlider.Value = doc.CanvasAngle;   // P0 回転view
+                if (CanvasAngleLabel != null) CanvasAngleLabel.Text = $"{doc.CanvasAngle:F0}°";
                 RenameBox.Text = sel.Name;
                 RotateSlider.Value = sel.Rotation;
                 RotateLabel.Text = $"{sel.Rotation:F0}°";
@@ -207,6 +210,7 @@ public partial class MainWindow : Window
             finally { updatingList = false; }
         }
         RenderCanvas();
+        ApplyCanvasView();   // P0 回転view の維持
         UpdateUndoButtons();
         RefreshDocTabs();
     }
@@ -222,6 +226,7 @@ public partial class MainWindow : Window
         updatingList = true;
         try
         {
+            var keepIds = new HashSet<Guid>(SelectedLayers().Select(l => l.Id));   // P0 複数選択の維持
             int sel = LayerList.SelectedIndex;
             LayerList.Items.Clear();
             var byId = doc.Layers.ToDictionary(l => l.Id);
@@ -236,10 +241,21 @@ public partial class MainWindow : Window
                 string mask = MaskOps.HasMask(l) ? (l.MaskSelected ? "[M*]" : "[M]") : "";
                 string clip = l.ClipSourceId != null ? "[C]" : "";
                 string shape = l.Shape != null ? "[S]" : "";
-                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{kind}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
+                string solo = doc.SoloLayerId == l.Id ? "[Solo] " : "";   // P0 Solo 標識
+                LayerList.Items.Add($"{indent}{(l.Visible ? "" : "[hidden] ")}{solo}{kind}{l.Name} {mask}{clip}{shape}   {l.Opacity:P0}   pos({l.Position.X:F0},{l.Position.Y:F0})");
             }
             if (LayerList.ItemCount > 0)
-                LayerList.SelectedIndex = Math.Clamp(sel, 0, LayerList.ItemCount - 1);
+            {
+                LayerList.SelectedItems.Clear();
+                for (int i = 0; i < LayerList.ItemCount; i++)
+                {
+                    int di = doc.Layers.Count - 1 - i;
+                    if (di >= 0 && di < doc.Layers.Count && keepIds.Contains(doc.Layers[di].Id))
+                        LayerList.SelectedItems.Add(LayerList.Items[i]);
+                }
+                if (LayerList.SelectedItems.Count == 0)
+                    LayerList.SelectedIndex = Math.Clamp(sel, 0, LayerList.ItemCount - 1);
+            }
         }
         finally { updatingList = false; }
     }
@@ -736,9 +752,10 @@ public partial class MainWindow : Window
 
     void OnGroupSelected(object s, RoutedEventArgs e)
     {
-        if (Selected is not { } l || l.IsGroup) return;
+        var picked = SelectedLayers().Where(l => !l.IsGroup).ToList();   // P0 複数選択UI
+        if (picked.Count == 0) return;
         undoStack.Push(doc);
-        var g = LayerHierarchy.GroupLayers(doc, new[] { l });
+        var g = LayerHierarchy.GroupLayers(doc, picked);
         Log(g != null ? $"Group '{g.Name}'" : "Group failed");
         RefreshAll();
     }
@@ -1303,9 +1320,10 @@ public partial class MainWindow : Window
         else sample = active.Bitmap;
         try
         {
-            int n = SelectionTools.WandSelect(doc, sample, docPoint, WandTolerance, sampleRadius: 0,
-                WandContiguous, EffectiveSelMode(mods));
-            Log($"Wand matched={n} tol={WandTolerance} contiguous={WandContiguous} all={WandSampleAll}");
+            int gap = (int)Math.Clamp(GapCloseSlider?.Value ?? 2, 0, 8);
+            int n = GapCloseOps.WandSelectGapClosed(doc, sample, docPoint, WandTolerance, sampleRadius: 0,
+                WandContiguous, EffectiveSelMode(mods), gap);
+            Log($"Wand matched={n} tol={WandTolerance} contiguous={WandContiguous} all={WandSampleAll} gap={gap}");
         }
         finally { if (ownsSample) sample.Dispose(); }
         RenderCanvas();
