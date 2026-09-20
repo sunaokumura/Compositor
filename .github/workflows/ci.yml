@@ -27,7 +27,12 @@ jobs:
         run: dotnet test tests/Compositor.Tests/Compositor.Tests.csproj -c Release --nologo
         working-directory: .
 
-  publish-win:
+  e2e-windows:
+    # t_48a8bb54由来の全E2EケースのCI実行ゲート。
+    # デバイスUI自動化(S1-S5実機操作自体)はGitHub hosted runnerでは
+    # 対話セッション/GPUなしのため実行不可 → 前提となる単体ゲート
+    # (DocumentModel=S1/S3/S4前提・ToolParity=S5前提・Stability/Perf)を
+    # windows-latest上で全件実行し、失敗時はログと成果物をartifacts保存する。
     runs-on: windows-latest
     needs: build-test
     steps:
@@ -35,7 +40,32 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "8.0.x"
+      - name: Build (Release)
+        run: dotnet build src/Compositor.Avalonia/Compositor.Avalonia.csproj -c Release --nologo
+      - name: Test on Windows (E2E unit gate S1-S5 premise, 22 tests)
+        # S1 add/remove, S3 composite, S4 export pixels,
+        # S5 clipboard/brush/adjust/transform undo-redo,
+        # Stability 5000-op soak, Perf 4K budget.
+        run: dotnet test tests/Compositor.Tests/Compositor.Tests.csproj -c Release --nologo --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+      - name: Upload test results (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: TestResults/
+          if-no-files-found: warn
+      - name: Upload failure logs and screenshots (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-failure-logs
+          path: |
+            TestResults/
+            **/compositor.log
+            **/*.png
+          if-no-files-found: warn
       - name: Publish win-x64 self-contained
+        if: success()
         run: dotnet publish src/Compositor.Avalonia -c Release -r win-x64 --self-contained true -o src/publish-win
       - name: Upload publish output
         uses: actions/upload-artifact@v4
