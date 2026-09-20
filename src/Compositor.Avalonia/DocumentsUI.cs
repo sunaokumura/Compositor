@@ -21,6 +21,7 @@ public partial class MainWindow
 {
     PaletteState palette = new();
     JpegOptions jpegOpts = new() { Quality = 0.85 };
+    bool updatingPalette;   // SyncPalettePanel rebuild中の SelectionChanged 再入ガード（ListBox.Clear/Add時の発火対策）
 
     // ---------- tab strip + document title (Mac ProjectTabs subset) ----------
 
@@ -213,6 +214,8 @@ public partial class MainWindow
 
     void SyncPalettePanel()
     {
+        if (updatingPalette) return;
+        updatingPalette = true;
         try
         {
             var sel = Selected;
@@ -236,10 +239,14 @@ public partial class MainWindow
                 foreach (var sw in palette.Swatches)
                     PaletteBox.Items.Add($"#{sw.Hex}");
                 if (PaletteBox.ItemCount > 0)
-                    PaletteBox.SelectedIndex = Math.Clamp(keep, 0, PaletteBox.ItemCount - 1);
+                {
+                    int want = Math.Clamp(keep, 0, PaletteBox.ItemCount - 1);
+                    if (PaletteBox.SelectedIndex != want) PaletteBox.SelectedIndex = want;
+                }
             }
         }
-        catch (Exception ex) { Log("SyncPalette ERROR: " + ex.Message); }
+        catch (Exception ex) { Log("SyncPalette ERROR: " + ex); }
+        finally { updatingPalette = false; }
     }
 
     void OnFgPick(object s, RoutedEventArgs e) => _ = PickColorAsync(background: false);
@@ -276,6 +283,7 @@ public partial class MainWindow
 
     void OnPaletteSelected(object s, SelectionChangedEventArgs e)
     {
+        if (updatingPalette) return;
         if (PaletteBox == null || PaletteBox.SelectedIndex < 0 || PaletteBox.SelectedIndex >= palette.Swatches.Count) return;
         palette.Set(palette.Swatches[PaletteBox.SelectedIndex], background: false);
         SyncPalettePanel();

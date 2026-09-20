@@ -1,4 +1,4 @@
-# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_e1a8b05e時点）
+# TOOLS_PARITY — Mac版 Document/*.swift 41件 vs Windows移植版（t_569f69c1最終版）
 
 ○＝移植済み ／ △＝部分的 ／ ×＝未移植（UIに「未対応」バッジ＋無効化＋ツールチップで明示）
 
@@ -79,7 +79,10 @@ Macの文書・入出力・色UIに対するWindows対応。判定はDocument 42
 | ColorPickerSheet.swift / ColorPaletteControls.swift | ColorPickerWindow（H/S/B・RGB・hex・preview）＋FG/BG・X入替・D初期化・覆面時は白/黒選択 | △（フローティングパネル・キャンバスクリック採取・GradientMap端色連動なし） |
 | ProjectTabs.swift | DocTabs（切替・•未保存ドット・DocNameBox改名） | △（ドラッグ受付・閉じる×・折畳みなし） |
 
-## 集計（42件＝41 Swift＋Gradient工具行の分割1）
-- ○ 15件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / LayerTransform（数値入力・Sampling含む） / Distort / CanvasSize / Crop / ImageSize（＋部分含め実用中核）＋本カードでShape / Gradient工具 / LayerMerge（Down拡張＋Group結合）を追加
-- △ 20件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整・タブ等が実用サブセットで動作（＋前カードでCurves/Levels/GradientMap/Exposure/Grain/Noise/Lens/Blur外広がり/調整層のエンジンを追加・層覆面/フォルダ/切抜覆面/ContentFill近似を追加＋本カードで計画書保存開封・JPEG出力・結合コピー・FG/BG調色板・タブ標識を追加）
-- × 7件： すべてUIに「未対応」バッジ・無効化・ツールチップで明示（SubjectRemoval/GuidedMatte/調整シートUI等。Curves/Levels/GradientMapの無効ボタンはシートUI用に残置・エンジンは△欄参照。Shape/Gradient/ContentFill/Mask/Group/Clipは対応済みのためバッジ解除・Fボタン有効化）
+## 集計（最終版・t_569f69c1で実数確認）
+- ○ 15件： LayerFlip / PixelInvert / LayerAppearance / DocumentHistory / CloneStamp / SmudgeLiquify / BlurTool（ブラシぼかし追加） / LayerTransform（数値入力・Sampling含む） / Distort / CanvasSize / Crop / ImageSize（＋部分含め実用中核）＋Shape / Gradient工具 / LayerMerge（Down拡張＋Group結合）
+- △ 20件： ブラシ（硬さ・間隔・不透明度・修復近似まで対応・GPUなし）・選択（矩形/楕円/投繩/多角/Wand/画素移動）・調整エンジン（Curves/Levels/GradientMap/Exposure/Hue全域/Grain/Noise/Lens/Blur外広がり＋調整層）・層覆面/フォルダ/切抜覆面/ContentFill近似・タブ等が実用サブセットで動作
+- × 3件（表内）： MaskTracing / GuidedMatte（SubjectRemoval関連のため対象外） / SubjectRemoval（Vision相当なし）。いずれもUIに「未対応」バッジ・無効化・ツールチップで明示
+- ×相当バッジ計7： 表内×3に加え、調整・フィルタ系シートUI未対応ボタン4（Curves/Levels/Hue/Filterのダイアログ。エンジンは△欄に移植済みのため表判定は△、ボタンは将来のシートUI用に未対応表示を残置）。Shape/Gradient/ContentFill/Mask/Group/Clipは対応済みのためバッジ解除・Fボタン有効化
+- 入出力・文書UI系（別枠・42件外）： 8行すべて△（.comp保存開封v1-7読込/v7書出・Save/SaveAs/Open・PNG/JPEG出力・Import・NewCanvas・JPEG/Colorピッカー・タブ）。HEIC/TIFFは復号器なしのため探知＋「未対応形式」明示
+- 検証証跡（t_569f69c1）： dotnet test Release 158/158合格（内Perf 2件含む）。Perf回帰＝4K三層合成84ms（基準94ms台を下回る）・1000回合成ストレス 949ms・メモリ+7KB（漏洩目安50MB未満を大幅クリア）。win-x64自己完結発行（0 errors・CS0618ダイアログ警告のみ）＋Make-Release.ps1で配布zip更新（216 entries・SHA256はdist内.sha256参照）。C:\Users\sunao\Apps\Compositor への上書き反映は利用者許可待ちのため未実施（既配置版は21:42版のまま）。追補： 実機煙試験で起動直後のSyncPalette ERROR（Index範囲外）を検出→原因工程t_e1a8b05eのDocumentsUI.SyncPalettePanel再入ガード欠落と特定し修正（updatingPaletteガード＋SafeSelect化＋例外全文ログ化）。修正後は全158試験再合格・修正版で実機再起動し無エラー起動を確認（Compositor for Windows・Responding=True・compositor.logにERRORなし）。修正版でpublish-winと配布zipを再生成（SHA256はdist内.sha256参照）
