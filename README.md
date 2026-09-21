@@ -32,7 +32,7 @@ C# / .NET 8 LTS + Avalonia UI 11 + SkiaSharp。Document層は非破壊レイヤ�
 
 ## 未対応の明示
 - `Subject Removal (未対応)` ボタンは無効化＋ツールチップで明示（Mac版の機能。Windows版では未対応）。
-- その他の未移植機能の一覧は FEATURE_GAP.md を参照。
+- その他の未移植機能の一覧は [FEATURE_GAP.md](FEATURE_GAP.md) を参照。
 
 ## 開発者向け
 - ビルド・テスト・配布zip作成・署名の扱いなど開発用の手順は [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) を参照。
